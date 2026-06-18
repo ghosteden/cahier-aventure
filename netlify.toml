@@ -3,7 +3,7 @@
 # La fonction "progress" gère la sauvegarde cloud via Netlify Blobs.
 
 [build]
-  publish = "."
+  publish = "public"
   functions = "netlify/functions"
 
 [functions]
