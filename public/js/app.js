@@ -13,12 +13,71 @@ window.CV = window.CV || {};
   let timerInterval = null;
   let session = null; // { dayStart, min, max, minFlag, maxFlag }
 
+  /* ---------- Installation de l'appli (PWA) ---------- */
+  const Install = {
+    deferred: null,
+    installed: false,
+    init() {
+      this.installed = this.checkInstalled();
+      window.addEventListener("beforeinstallprompt", (e) => {
+        e.preventDefault();
+        this.deferred = e;
+        if (onCarteOrProfil()) route();
+      });
+      window.addEventListener("appinstalled", () => {
+        this.installed = true; this.deferred = null;
+        UI.toast("Appli installée ! 🎉 Retrouve-la sur ton écran d'accueil.");
+        if (onCarteOrProfil()) route();
+      });
+    },
+    checkInstalled() {
+      return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+        || window.navigator.standalone === true;
+    },
+    isInstalled() { return this.installed || this.checkInstalled(); },
+    canPrompt() { return !!this.deferred; },
+    isIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream; },
+    async prompt() {
+      if (!this.deferred) return;
+      this.deferred.prompt();
+      try { await this.deferred.userChoice; } catch (e) {}
+      this.deferred = null;
+    }
+  };
+  function onCarteOrProfil() {
+    const hs = location.hash || "#/carte";
+    return hs.indexOf("carte") >= 0 || hs.indexOf("profil") >= 0 || hs === "#/" || hs === "";
+  }
+
+  /* Bannière / bouton d'installation (null si déjà installée ou non proposable). */
+  function installBanner() {
+    if (Install.isInstalled()) return null;
+    if (Install.canPrompt()) {
+      return h("div", { class: "card glass", style: { display: "flex", alignItems: "center", gap: "12px" } },
+        h("div", { style: { fontSize: "30px" } }, "📲"),
+        h("div", { style: { flex: "1" } },
+          h("strong", {}, "Installer l'appli"),
+          h("div", { class: "muted", style: { fontSize: "13px" } }, "Comme une vraie appli, même sans internet.")),
+        h("button", { class: "btn small", onclick: async () => { await Install.prompt(); route(); } }, "Installer"));
+    }
+    if (Install.isIOS()) {
+      return h("div", { class: "card glass" },
+        h("div", { class: "row", style: { gap: "10px" } },
+          h("div", { style: { fontSize: "26px" } }, "📲"),
+          h("strong", {}, "Ajouter à l'écran d'accueil")),
+        h("p", { class: "muted", style: { fontSize: "13px", marginTop: "6px" } },
+          "Sur iPhone/iPad : appuie sur Partager ⬆️ en bas, puis « Sur l'écran d'accueil »."));
+    }
+    return null;
+  }
+
   /* ---------- Démarrage ---------- */
   function boot() {
     // Service worker (hors-ligne)
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
     }
+    Install.init();
     // Boutons de navigation
     navEl.querySelectorAll(".nav-btn").forEach((b) =>
       b.addEventListener("click", () => goto(b.getAttribute("data-go"))));
@@ -156,6 +215,8 @@ window.CV = window.CV || {};
     UI.applyTheme(curWorld.theme);
     const c = screen();
     c.appendChild(UI.statusBar(state));
+    const banner = installBanner();
+    if (banner) c.appendChild(banner);
     c.appendChild(h("div", { class: "h-row" },
       h("h2", { class: "section-title" }, "🗺️ Ta carte d'aventure"),
       h("span", { class: "pill" }, "Jour " + (state.currentDay || 1) + " / " + CV.TOTAL_DAYS)));
@@ -432,6 +493,8 @@ window.CV = window.CV || {};
     const c = screen();
     c.appendChild(UI.statusBar(state));
     c.appendChild(h("h2", { class: "section-title" }, "🧑‍🚀 Mon profil"));
+    const profBanner = installBanner();
+    if (profBanner) c.appendChild(profBanner);
 
     // Choix du thème (univers)
     const themeCard = h("div", { class: "card glass" }, h("strong", {}, "Mon univers préféré"));
