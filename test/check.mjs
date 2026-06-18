@@ -1,0 +1,16 @@
+import { chromium } from "playwright";
+const URL = "https://cahier-aventure-ce2.netlify.app/";
+const b = await chromium.launch();
+const p = await (await b.newContext()).newPage();
+await p.goto(URL, { waitUntil: "networkidle" });
+await p.waitForSelector("#app:not([hidden])");
+await p.waitForTimeout(1500);
+await p.fill("#login-name", "Léo");
+await p.click('button:has-text("C\'est parti")');
+await p.waitForSelector(".world");
+await p.waitForTimeout(3500);
+const r = await fetch(URL + ".netlify/functions/progress?id=ce2__leo");
+const d = await r.json();
+console.log("Sauvegarde cloud écrite par le NAVIGATEUR ?", d.state ? "OUI (xp=" + d.state.xp + ", nom=" + d.state.displayName + ")" : "non");
+await fetch(URL + ".netlify/functions/progress?id=ce2__leo", { method: "DELETE" });
+await b.close();

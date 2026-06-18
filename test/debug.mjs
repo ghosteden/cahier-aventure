@@ -1,0 +1,17 @@
+import { chromium } from "playwright";
+const URL = "https://cahier-aventure-ce2.netlify.app/";
+const b = await chromium.launch();
+const p = await (await b.newContext()).newPage();
+p.on("request", (r) => { if (r.url().includes("/functions/progress")) console.log("→ REQ", r.method(), r.url().split("/functions/")[1]); });
+p.on("response", async (r) => { if (r.url().includes("/functions/progress")) console.log("← RES", r.status(), r.request().method()); });
+await p.goto(URL, { waitUntil: "networkidle" });
+await p.waitForSelector("#app:not([hidden])");
+await p.waitForTimeout(1500);
+console.log("syncOk avant login:", await p.evaluate(() => CV._syncOk));
+await p.fill("#login-name", "Léo");
+await p.click('button:has-text("C\'est parti")');
+await p.waitForSelector(".world");
+await p.waitForTimeout(3500);
+const st = await p.evaluate(() => { const s = CV.Store.current(); return { player: s.player, cloud: s.settings.cloud, xp: s.xp, hasSync: !!CV.Sync, syncOk: CV._syncOk }; });
+console.log("ÉTAT:", JSON.stringify(st));
+await b.close();
