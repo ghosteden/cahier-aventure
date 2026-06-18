@@ -1,0 +1,14 @@
+{
+  "name": "aventure-des-savoirs-ce2",
+  "version": "1.0.0",
+  "description": "Cahier de vacances CE2 vers CM1 en mode jeu (PWA) : français, maths, sciences, dictées.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx netlify-cli dev",
+    "deploy": "npx netlify-cli deploy --prod"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}

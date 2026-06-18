@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1b1140" />
+  <title>L'Aventure des Savoirs — Cahier de vacances CE2</title>
+  <meta name="description" content="Cahier de vacances CE2 → CM1 en mode jeu : français, maths, sciences, dictées." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="assets/icon.svg" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Écran de démarrage -->
+  <div id="splash" class="splash">
+    <div class="splash-logo">🚀</div>
+    <h1 class="splash-title">L'Aventure des Savoirs</h1>
+    <p class="splash-sub">Chargement de ton aventure…</p>
+  </div>
+
+  <!-- Conteneur principal de l'appli -->
+  <main id="app" class="app" hidden></main>
+
+  <!-- Barre de navigation du bas -->
+  <nav id="navbar" class="navbar" hidden>
+    <button class="nav-btn" data-go="#/carte"><span class="nav-ico">🗺️</span><span>Carte</span></button>
+    <button class="nav-btn" data-go="#/jour"><span class="nav-ico">⭐</span><span>Aujourd'hui</span></button>
+    <button class="nav-btn" data-go="#/recompenses"><span class="nav-ico">🏆</span><span>Trophées</span></button>
+    <button class="nav-btn" data-go="#/profil"><span class="nav-ico">🧑‍🚀</span><span>Profil</span></button>
+  </nav>
+
+  <!-- Zone de notifications / toasts -->
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <!-- Données du contenu (chargées en premier) -->
+  <script src="data/content-francais.js"></script>
+  <script src="data/content-maths.js"></script>
+  <script src="data/content-sciences.js"></script>
+  <script src="data/content-culture.js"></script>
+
+  <!-- Moteurs de l'application -->
+  <script src="js/program.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/gamification.js"></script>
+  <script src="js/dictee.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
