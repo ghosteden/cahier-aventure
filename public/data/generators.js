@@ -310,4 +310,48 @@ window.CV = window.CV || {};
     const idx = shuffleArr(CV.DICTEES.map((_, i) => i)).slice(0, n);
     return { type: "dictee", q: "Écris la phrase que tu entends.", sentences: idx.map((i) => CV.DICTEES[i]) };
   };
+
+  /* ---- Jeux de logique (drag-and-drop : ranger/ordonner) ---- */
+  const BRICK_COLORS = ["#ff5c7c", "#7c5cff", "#2ec4b6", "#ff9f1c", "#00d4ff", "#a06cd5"];
+
+  CV.gen.logicSize = function () {
+    const asc = Math.random() < 0.5;
+    const sizes = shuffleArr([1, 2, 3, 4]);
+    const tokens = sizes.map((s, i) => ({ id: "b" + i, label: "", w: 44 + s * 26, color: BRICK_COLORS[i % BRICK_COLORS.length], key: s }));
+    const sol = tokens.map((t) => t.key).sort((a, b) => asc ? a - b : b - a);
+    return { type: "logic", q: "Range les briques.", instruction: asc ? "Range les briques de la PLUS PETITE à la plus grande." : "Range les briques de la PLUS GRANDE à la plus petite.",
+      tokens, solutionKeys: sol, explain: "Il fallait les classer par taille." };
+  };
+
+  CV.gen.logicNumber = function () {
+    const asc = Math.random() < 0.5;
+    const nums = [];
+    while (nums.length < 4) { const n = R(5, 99); if (nums.indexOf(n) < 0) nums.push(n); }
+    const tokens = nums.map((n, i) => ({ id: "n" + i, label: String(n), key: n }));
+    const sol = nums.slice().sort((a, b) => asc ? a - b : b - a);
+    return { type: "logic", q: "Range les nombres.", instruction: asc ? "Range du plus PETIT au plus grand." : "Range du plus GRAND au plus petit.",
+      tokens, solutionKeys: sol, explain: "Classe les nombres par valeur." };
+  };
+
+  CV.gen.logicAlpha = function () {
+    const words = shuffleArr(["banane", "abricot", "cerise", "datte", "fraise", "kiwi", "mangue", "orange", "poire", "raisin", "tomate", "salade"]).slice(0, 4);
+    const tokens = words.map((w, i) => ({ id: "w" + i, label: w, key: w }));
+    const sol = words.slice().sort();
+    return { type: "logic", q: "Range les mots.", instruction: "Range les mots dans l'ordre ALPHABÉTIQUE (comme le dictionnaire).",
+      tokens, solutionKeys: sol, explain: "On regarde la 1re lettre : a, b, c…" };
+  };
+
+  CV.gen.logicPattern = function () {
+    const startBlue = Math.random() < 0.5;
+    const seq = [];
+    for (let i = 0; i < 4; i++) seq.push((i % 2 === 0) === startBlue ? "🔵" : "🔴");
+    const tokens = seq.map((e, i) => ({ id: "p" + i, label: e, key: e }));
+    return { type: "logic", q: "Place les briques.", instruction: "Range les briques pour ALTERNER les couleurs, en commençant par " + (startBlue ? "🔵 (bleu)" : "🔴 (rouge)") + ".",
+      tokens, solutionKeys: seq, explain: "Une couleur sur deux, sans jamais deux pareilles côte à côte." };
+  };
+
+  /* Choisit un jeu de logique au hasard. */
+  CV.gen.logic = function () {
+    return pick([CV.gen.logicSize, CV.gen.logicNumber, CV.gen.logicAlpha, CV.gen.logicPattern])();
+  };
 })();

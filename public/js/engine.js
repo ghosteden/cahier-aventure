@@ -151,6 +151,7 @@ CV.Engine = (function () {
         case "calcul":     return renderInput(step, true);
         case "fill":       return renderInput(step, false);
         case "match":      return renderMatch(step);
+        case "logic":      return renderLogic(step);
         case "dictee":     return renderDictee(step);
         default:           return next(true);
       }
@@ -266,6 +267,79 @@ CV.Engine = (function () {
       function finish() { showFeedback(mistakes === 0, step.explain + (mistakes ? "" : "  Tout bon du premier coup !")); }
 
       body.appendChild(cols);
+    }
+
+    /* ---- Jeu de logique : lire la consigne, ranger les briques en drag-and-drop ---- */
+    function renderLogic(step) {
+      if (step._from) body.appendChild(h("div", { class: "pill" }, step._from));
+      body.appendChild(h("div", { class: "question" }, step.q || "Range dans le bon ordre."));
+      if (step.instruction) body.appendChild(h("div", { class: "logic-instr", html: "📋 " + step.instruction }));
+
+      const tokById = (id) => step.tokens.find((t) => t.id === id);
+      const ids = step.tokens.map((t) => t.id);
+      // ordre de départ mélangé (différent de la solution si possible)
+      let order = shuffle(ids);
+      for (let tryc = 0; tryc < 8; tryc++) {
+        const keys = order.map((id) => String(tokById(id).key));
+        if (!keys.every((k, i) => k === String(step.solutionKeys[i]))) break;
+        order = shuffle(ids);
+      }
+
+      const slotsWrap = h("div", { class: "logic-slots" });
+      let dragging = null, clone = null, fromIdx = null;
+
+      function tokenEl(t) {
+        const el = h("div", { class: "logic-tok" + (t.w ? " brick" : "") });
+        if (t.w) { el.style.width = t.w + "px"; if (t.color) el.style.background = t.color; }
+        if (t.label) el.appendChild(h("span", {}, t.label));
+        return el;
+      }
+      function moveClone(e) { if (!clone) return; clone.style.left = (e.clientX - clone.offsetWidth / 2) + "px"; clone.style.top = (e.clientY - clone.offsetHeight / 2) + "px"; }
+      function cleanup() { if (clone) { clone.remove(); clone = null; } if (dragging) dragging.style.opacity = ""; dragging = null; fromIdx = null; }
+      function drop(e) {
+        const target = document.elementFromPoint(e.clientX, e.clientY);
+        const slot = target && target.closest ? target.closest(".logic-slot") : null;
+        if (slot) { const toIdx = +slot.getAttribute("data-idx"); if (toIdx !== fromIdx && !isNaN(toIdx)) { const t = order[fromIdx]; order[fromIdx] = order[toIdx]; order[toIdx] = t; } }
+        cleanup(); renderSlots();
+      }
+      function attachDrag(te, idx) {
+        te.addEventListener("pointerdown", (e) => {
+          if (body._validated) return;
+          dragging = te; fromIdx = idx;
+          const r = te.getBoundingClientRect();
+          clone = te.cloneNode(true); clone.classList.add("logic-drag");
+          clone.style.width = r.width + "px"; clone.style.height = r.height + "px";
+          document.body.appendChild(clone);
+          te.style.opacity = ".25"; moveClone(e);
+          try { te.setPointerCapture(e.pointerId); } catch (_) {}
+          e.preventDefault();
+        });
+        te.addEventListener("pointermove", (e) => { if (dragging === te) moveClone(e); });
+        te.addEventListener("pointerup", (e) => { if (dragging === te) drop(e); });
+        te.addEventListener("pointercancel", () => cleanup());
+      }
+      function renderSlots() {
+        slotsWrap.innerHTML = "";
+        order.forEach((id, idx) => {
+          const slot = h("div", { class: "logic-slot", "data-idx": idx });
+          const te = tokenEl(tokById(id));
+          attachDrag(te, idx);
+          slot.appendChild(te);
+          slotsWrap.appendChild(slot);
+        });
+      }
+      renderSlots();
+      body.appendChild(slotsWrap);
+      body.appendChild(h("div", { class: "muted center", style: { fontSize: "13px", marginTop: "6px" } }, "↔️ Fais glisser les briques pour les échanger."));
+
+      const validate = () => {
+        if (body._validated) return; body._validated = true;
+        const keys = order.map((id) => String(tokById(id).key));
+        const good = keys.every((k, i) => k === String(step.solutionKeys[i]));
+        Array.from(slotsWrap.children).forEach((slot, i) => slot.classList.add(keys[i] === String(step.solutionKeys[i]) ? "ok" : "ko"));
+        showFeedback(good, step.explain || (good ? "" : "Regarde bien l'ordre demandé."));
+      };
+      body.appendChild(h("button", { class: "btn block mt", onclick: validate }, "Valider"));
     }
 
     /* ---- Dictée (une phrase) : lecture vocale + clavier + écriture au stylet ---- */

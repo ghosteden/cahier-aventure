@@ -43,12 +43,15 @@ CV.dayPlan = function (level) {
   const c = (CV.CURRICULUM[wi] || [])[ni];
 
   if (c) {
+    const prob = c.prob || 1;
+    // Avec 2 problèmes ou plus, l'un devient un jeu de logique (lire la consigne + ranger).
+    const probGen = prob >= 2 ? [["probleme", prob - 1], ["logic", 1]] : [["probleme", prob]];
     return {
       level,
       steps: [
         stepLesson("francais", c.fr[0], c.fr[1]),
         stepLesson("maths", c.ma[0], c.ma[1]),
-        { kind: "probleme", label: "Problème", icon: "🧩", gen: [["probleme", c.prob || 1]] },
+        { kind: "probleme", label: "Problème & logique", icon: "🧩", gen: probGen },
         { kind: "dictee", label: "Dictée", icon: "🎧", count: dictN }
       ]
     };

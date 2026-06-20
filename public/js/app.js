@@ -221,6 +221,12 @@ window.CV = window.CV || {};
   let daySession = null;       // progression de la journée en cours (étapes)
   let lastHeroNode = {};       // { [worldIndex]: nodeIdx } pour détecter une avancée du héros
   let mapAPI = null;           // API de la carte courante (ex. walkTo) pour piloter le héros depuis ailleurs
+  // --- Éditeur de chemins (dans l'outil de placement) ---
+  let editSeg = null;          // index du segment de chemin en édition (paths[editSeg]) ou null
+  let editPath = null;         // copie de travail : [{x,y,jump}]
+  let selPoint = -1;           // point sélectionné dans editPath
+  let mapCam = null;           // dernière position caméra (px) — évite de recentrer pendant l'édition
+  let curMapW = null;          // monde actuellement affiché (pour les actions de l'éditeur)
 
   /* Jeton du héros :
      - si le monde a une planche d'animation (w.anim) → sprite animé (idle/walk/happy/sad/jump) ;
@@ -255,7 +261,9 @@ window.CV = window.CV || {};
     strip.style.animation = "none";
     void strip.offsetWidth;                       // redémarre l'animation proprement
     const count = opts.once ? "1" : "infinite";
-    strip.style.animation = "spritestep " + a.dur + "s steps(" + a.frames + ") " + count;
+    // idle (ou anim avec yoyo:true) joué en aller-retour pour éviter le saut de la dernière à la première frame
+    const dir = (!opts.once && (mode === "idle" || a.yoyo)) ? " alternate" : "";
+    strip.style.animation = "spritestep " + a.dur + "s steps(" + a.frames + ") " + count + dir;
     clearTimeout(wrap._animT);
     if (opts.once) {
       wrap._animT = setTimeout(() => setHeroMode(wrap, strip, w, opts.then || "idle", {}), a.dur * 1000);
@@ -294,23 +302,76 @@ window.CV = window.CV || {};
     handle.addEventListener("pointercancel", end);
   }
 
+  /* ---------- Éditeur de chemins ---------- */
+  // Sérialise editPath en tableau JS (avec les "jump") prêt à coller dans program.js
+  function pathToArray(ep) {
+    const parts = [];
+    ep.forEach((p) => { if (p.jump) parts.push('"jump"'); parts.push("[" + p.x + ", " + p.y + "]"); });
+    return "[" + parts.join(", ") + "]";
+  }
+  // Charge le segment n de curMapW dans editPath (n=null pour quitter l'édition)
+  function loadSegment(n) {
+    editSeg = n; selPoint = -1;
+    if (n == null) { editPath = null; return; }
+    const raw = (curMapW && curMapW.paths && curMapW.paths[n]) ? curMapW.paths[n] : [];
+    editPath = []; let j = false;
+    raw.forEach((it) => { if (it === "jump") { j = true; return; } editPath.push({ x: it[0], y: it[1], jump: j }); j = false; });
+  }
+  function edToggleJump() { if (selPoint >= 0) { editPath[selPoint].jump = !editPath[selPoint].jump; renderCarte(); } }
+  function edDelete() { if (selPoint >= 0) { editPath.splice(selPoint, 1); selPoint = Math.min(selPoint, editPath.length - 1); renderCarte(); } }
+  function edInsert() {
+    const i = selPoint >= 0 ? selPoint : editPath.length - 1;
+    const a = editPath[i], b = editPath[i + 1];
+    let np;
+    if (a && b) np = { x: Math.round((a.x + b.x) / 2 * 10) / 10, y: Math.round((a.y + b.y) / 2 * 10) / 10, jump: false };
+    else if (a) np = { x: Math.round((a.x + 3) * 10) / 10, y: a.y, jump: false };
+    else np = { x: 50, y: 50, jump: false };
+    editPath.splice(i + 1, 0, np); selPoint = i + 1; renderCarte();
+  }
+  function edAddEnd(x, y) { editPath.push({ x: x, y: y, jump: false }); selPoint = editPath.length - 1; renderCarte(); }
+
   function renderPlacePanel() {
     document.querySelectorAll(".place-panel").forEach((e) => e.remove());
     const handle = h("div", { class: "pp-handle" },
       h("span", {}, "⠿ Déplace ce panneau"),
       h("span", { class: "pp-mini", onclick: (e) => { e.stopPropagation(); document.querySelector(".place-panel").classList.toggle("mini"); } }, "▽"));
-    const panel = h("div", { class: "place-panel" },
-      handle,
-      h("div", { class: "pp-body" },
+
+    // Sélecteur de segment de chemin à éditer
+    const nPaths = (curMapW && curMapW.paths) ? curMapW.paths.length : 0;
+    const sel = h("select", { id: "seg-sel", onchange: (e) => { loadSegment(e.target.value === "" ? null : +e.target.value); renderCarte(); } });
+    sel.appendChild(h("option", { value: "" }, "— Pierres (placement libre) —"));
+    for (let i = 0; i < nPaths; i++) { const o = h("option", { value: String(i) }, "Chemin " + (i + 1) + "→" + (i + 2)); if (i === editSeg) o.selected = true; sel.appendChild(o); }
+
+    let body;
+    if (editSeg != null && editPath) {
+      const actions = selPoint >= 0
+        ? h("div", { class: "btn-row", style: { marginTop: "6px" } },
+            h("button", { class: "btn small", onclick: edToggleJump }, editPath[selPoint] && editPath[selPoint].jump ? "❌ retirer saut" : "🦘 saut"),
+            h("button", { class: "btn ghost small", onclick: edInsert }, "➕ point après"),
+            h("button", { class: "btn ghost small", onclick: edDelete }, "🗑️ supprimer"))
+        : h("div", { class: "pp-hint" }, "Clique un point pour le sélectionner.");
+      const ta = h("textarea", { id: "path-ta", readonly: "" }); ta.value = pathToArray(editPath);
+      body = h("div", { class: "pp-body" },
+        h("div", {}, "Éditer : "), sel,
+        h("div", { class: "pp-hint" }, "Glisse les points • clique pour sélectionner • double-clic sur la carte = ajouter à la fin."),
+        actions, ta,
+        h("div", { class: "btn-row", style: { marginTop: "6px" } },
+          h("button", { class: "btn ghost small", onclick: () => { const t = document.getElementById("path-ta"); t.select(); document.execCommand("copy"); } }, "📋 Copier"),
+          h("button", { class: "btn small", onclick: () => { placeMode = false; loadSegment(null); renderCarte(); } }, "✅ Fini")));
+    } else {
+      body = h("div", { class: "pp-body" },
+        h("div", {}, "Éditer : "), sel,
         h("div", {}, "📍 Double-clique sur la carte, dans l'ordre des 9 cases (la 9ᵉ = boss). Copie-moi cette ligne :"),
         h("textarea", { id: "place-ta", readonly: "" }),
         h("div", { class: "btn-row", style: { marginTop: "6px" } },
           h("button", { class: "btn ghost small", onclick: () => { placePoints.pop(); renderCarte(); } }, "↩️ Annuler"),
           h("button", { class: "btn ghost small", onclick: () => { placePoints = []; renderCarte(); } }, "🗑️ Effacer"),
-          h("button", { class: "btn small", onclick: () => { placeMode = false; renderCarte(); } }, "✅ Fini"))));
+          h("button", { class: "btn small", onclick: () => { placeMode = false; renderCarte(); } }, "✅ Fini")));
+    }
+    const panel = h("div", { class: "place-panel" }, handle, body);
     document.body.appendChild(panel);
     makeDraggable(panel, handle);
-    updatePlacePanel();
+    if (editSeg == null) updatePlacePanel();
   }
 
   function svgEl(str) { const d = document.createElement("div"); d.innerHTML = str.trim(); return d.firstChild; }
@@ -354,6 +415,7 @@ window.CV = window.CV || {};
     const curWorldIndex = CV.worldIndexOfLevel(curLevel);
     if (mapViewIndex === null || mapViewIndex > curWorldIndex) mapViewIndex = curWorldIndex;
     const w = CV.worldByIndex(mapViewIndex);
+    curMapW = w;
     UI.applyTheme(w.theme);
     // garde l'avatar de la barre de statut en phase avec le monde courant
     const curTheme = CV.worldByIndex(curWorldIndex).theme;
@@ -377,7 +439,7 @@ window.CV = window.CV || {};
       h("button", { class: "world-arrow", disabled: mapViewIndex >= curWorldIndex ? "" : null,
         onclick: () => { if (mapViewIndex < curWorldIndex) { mapViewIndex++; renderCarte(); } } }, "›"),
       h("button", { class: "world-arrow", style: placeMode ? { background: "var(--gold)", color: "#000" } : null,
-        title: "Placer les pierres", onclick: () => { placeMode = !placeMode; if (placeMode) placePoints = []; renderCarte(); } }, "📍"),
+        title: "Placer les pierres", onclick: () => { placeMode = !placeMode; placePoints = []; editSeg = null; editPath = null; selPoint = -1; mapCam = null; renderCarte(); } }, "📍"),
       h("div", { class: "chip gold" }, "⭐" + (state.stars || 0)),
       h("div", { class: "chip fire" }, "🔥" + (state.streak.count || 0))));
     const banner = installBanner();
@@ -518,6 +580,9 @@ window.CV = window.CV || {};
       tok._setMode("happy", { once: true });
       const legs = buildRoute(prev, curNodeIdx);
       setTimeout(() => walkLegs(legs, startPt), (w.anim.happy.dur || 0.6) * 1000);
+    } else if (placeMode && mapCam) {
+      // en mode édition, on garde la position de caméra (pas de recentrage à chaque retouche)
+      tx = clamp(mapCam[0], minTx, 0); ty = clamp(mapCam[1], minTy, 0); apply();
     } else {
       setCam(heroStart, 0);
     }
@@ -533,18 +598,58 @@ window.CV = window.CV || {};
       }
     };
 
-    // Outil de placement : marqueurs + relevé des coordonnées au double-clic
+    // Outil de placement / éditeur de chemins
     if (placeMode) {
-      placePoints.forEach((p, i) => layer.appendChild(
-        h("div", { class: "place-marker", style: { left: p[0] + "%", top: p[1] + "%" } }, String(i + 1))));
-      viewport.addEventListener("dblclick", (e) => {
-        const r = layer.getBoundingClientRect();
-        const x = Math.round((e.clientX - r.left) / r.width * 1000) / 10;
-        const y = Math.round((e.clientY - r.top) / r.height * 1000) / 10;
-        placePoints.push([x, y]);
-        layer.appendChild(h("div", { class: "place-marker", style: { left: x + "%", top: y + "%" } }, String(placePoints.length)));
-        updatePlacePanel();
-      });
+      const PC = ["#ff5c7c", "#ffd23f", "#2ec4b6", "#7c5cff", "#ff9f1c", "#48b1c4", "#9eff5c", "#ff7ce0"];
+      const pctOf = (e) => { const r = layer.getBoundingClientRect();
+        return [Math.max(0, Math.min(100, Math.round((e.clientX - r.left) / r.width * 1000) / 10)),
+                Math.max(0, Math.min(100, Math.round((e.clientY - r.top) / r.height * 1000) / 10))]; };
+
+      // Chemins existants en lecture seule (on saute celui en cours d'édition)
+      if (w.paths) {
+        let svg = '<svg class="path-lines" viewBox="0 0 100 100" preserveAspectRatio="none">';
+        w.paths.forEach((raw, pi) => { if (pi === editSeg) return;
+          const chain = [w.nodes[pi]].concat(parsePts(raw).map((p) => p.pt), [w.nodes[pi + 1]]);
+          svg += '<path d="' + chain.map((p, k) => (k ? "L" : "M") + p[0] + " " + p[1]).join(" ") + '" fill="none" stroke="' + PC[pi % PC.length] + '" stroke-width="0.4" stroke-dasharray="1.2 0.8" opacity="0.75"/>';
+        });
+        layer.appendChild(svgEl(svg + "</svg>"));
+        w.paths.forEach((raw, pi) => { if (pi === editSeg) return;
+          const col = PC[pi % PC.length], pts = parsePts(raw);
+          pts.forEach((p, wi) => layer.appendChild(
+            h("div", { class: "path-marker" + (p.jump ? " jump" : ""), style: { left: p.pt[0] + "%", top: p.pt[1] + "%", "--pc": col } }, (p.jump ? "J" : "") + (wi + 1))));
+          if (pts.length) layer.appendChild(
+            h("div", { class: "path-label", style: { left: pts[0].pt[0] + "%", top: pts[0].pt[1] + "%", background: col } }, (pi + 1) + "→" + (pi + 2)));
+        });
+      }
+
+      if (editSeg != null && editPath) {
+        // ---- Éditeur live du segment sélectionné ----
+        const col = PC[editSeg % PC.length];
+        const line = svgEl('<svg class="path-lines edit-line" viewBox="0 0 100 100" preserveAspectRatio="none"><path fill="none" stroke="' + col + '" stroke-width="0.6" stroke-dasharray="1.4 0.9"/></svg>');
+        const linePath = line.querySelector("path");
+        const redrawLine = () => { const chain = [w.nodes[editSeg]].concat(editPath.map((p) => [p.x, p.y]), [w.nodes[editSeg + 1]]);
+          linePath.setAttribute("d", chain.map((p, k) => (k ? "L" : "M") + p[0] + " " + p[1]).join(" ")); };
+        layer.appendChild(line); redrawLine();
+        editPath.forEach((p, i) => {
+          const hd = h("div", { class: "edit-handle" + (p.jump ? " jump" : "") + (i === selPoint ? " sel" : ""), style: { left: p.x + "%", top: p.y + "%", "--pc": col } }, (p.jump ? "J" : "") + (i + 1));
+          hd.addEventListener("pointerdown", (e) => {
+            e.stopPropagation(); e.preventDefault();
+            if (selPoint !== i) { selPoint = i; renderPlacePanel(); document.querySelectorAll(".edit-handle.sel").forEach((el) => el.classList.remove("sel")); hd.classList.add("sel"); }
+            try { hd.setPointerCapture(e.pointerId); } catch (_) {}
+            const move = (ev) => { const [nx, ny] = pctOf(ev); editPath[i].x = nx; editPath[i].y = ny; hd.style.left = nx + "%"; hd.style.top = ny + "%"; redrawLine(); const ta = document.getElementById("path-ta"); if (ta) ta.value = pathToArray(editPath); };
+            const up = () => { try { hd.releasePointerCapture(e.pointerId); } catch (_) {} hd.removeEventListener("pointermove", move); hd.removeEventListener("pointerup", up); };
+            hd.addEventListener("pointermove", move); hd.addEventListener("pointerup", up);
+          });
+          layer.appendChild(hd);
+        });
+        // double-clic sur la carte = ajouter un point à la fin du chemin édité
+        viewport.addEventListener("dblclick", (e) => { const [x, y] = pctOf(e); edAddEnd(x, y); });
+      } else {
+        // Placement libre des pierres (ancien comportement)
+        placePoints.forEach((p, i) => layer.appendChild(h("div", { class: "place-marker", style: { left: p[0] + "%", top: p[1] + "%" } }, String(i + 1))));
+        viewport.addEventListener("dblclick", (e) => { const [x, y] = pctOf(e); placePoints.push([x, y]);
+          layer.appendChild(h("div", { class: "place-marker", style: { left: x + "%", top: y + "%" } }, String(placePoints.length))); updatePlacePanel(); });
+      }
       renderPlacePanel();
     }
 
@@ -565,7 +670,7 @@ window.CV = window.CV || {};
         viewport.classList.add("dragging");
         try { viewport.setPointerCapture(e.pointerId); } catch (_) {}
       }
-      if (captured) { tx = clamp(stx + dx, minTx, 0); ty = clamp(sty + dy, minTy, 0); apply(); }
+      if (captured) { tx = clamp(stx + dx, minTx, 0); ty = clamp(sty + dy, minTy, 0); apply(); mapCam = [tx, ty]; }
     });
     const end = () => { dragging = false; captured = false; viewport.classList.remove("dragging"); };
     viewport.addEventListener("pointerup", end);
