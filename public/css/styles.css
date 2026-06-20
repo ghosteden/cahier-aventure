@@ -553,3 +553,30 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
   border-radius:10px; display:flex; align-items:center; justify-content:center;
   font-weight:bold; font-size:20px; box-shadow:0 8px 16px rgba(0,0,0,.4);
 }
+
+/* ---- Placement (suite / tableau double entrée) ---- */
+.place-tray { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; padding:12px; background:#efeaff; border-radius:14px; min-height:64px; }
+.place-piece {
+  min-width:50px; min-height:50px; border-radius:10px; background:#fff; color:var(--ink);
+  display:flex; align-items:center; justify-content:center; font-weight:bold; padding:6px 10px;
+  box-shadow:0 4px 0 rgba(0,0,0,.18); cursor:grab; touch-action:none; user-select:none;
+}
+.place-piece.brick { color:#fff; }
+.place-drag { position:fixed; z-index:60; pointer-events:none; background:#fff; color:var(--ink);
+  border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:bold;
+  box-shadow:0 8px 16px rgba(0,0,0,.4); }
+.place-seq { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; align-items:center; padding:8px; }
+.place-fixed { min-width:50px; min-height:50px; display:flex; align-items:center; justify-content:center; font-weight:bold; color:var(--ink); }
+.place-zone {
+  min-width:54px; min-height:54px; border-radius:12px; border:2px dashed #b9add9; background:#fff;
+  display:flex; align-items:center; justify-content:center;
+}
+.place-zone.ok { border-color:var(--good); background:#eafff2; }
+.place-zone.ko { border-color:var(--bad); background:#ffeef2; }
+.place-grid { display:inline-flex; flex-direction:column; gap:6px; margin:0 auto; }
+.place-grid { width:100%; }
+.pg-row { display:flex; gap:6px; justify-content:center; }
+.pg-corner { width:46px; }
+.pg-head { width:46px; min-height:46px; display:flex; align-items:center; justify-content:center; font-weight:bold; color:var(--ink); }
+.pg-swatch { width:30px; height:30px; border-radius:8px; border:2px solid rgba(0,0,0,.2); }
+.pg-row .place-zone { min-width:46px; min-height:46px; }

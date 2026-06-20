@@ -152,6 +152,7 @@ CV.Engine = (function () {
         case "fill":       return renderInput(step, false);
         case "match":      return renderMatch(step);
         case "logic":      return renderLogic(step);
+        case "place":      return renderPlace(step);
         case "dictee":     return renderDictee(step);
         default:           return next(true);
       }
@@ -338,6 +339,116 @@ CV.Engine = (function () {
         const good = keys.every((k, i) => k === String(step.solutionKeys[i]));
         Array.from(slotsWrap.children).forEach((slot, i) => slot.classList.add(keys[i] === String(step.solutionKeys[i]) ? "ok" : "ko"));
         showFeedback(good, step.explain || (good ? "" : "Regarde bien l'ordre demandé."));
+      };
+      body.appendChild(h("button", { class: "btn block mt", onclick: validate }, "Valider"));
+    }
+
+    /* ---- Placement : glisser des étiquettes vers des cases (suite / tableau double entrée) ---- */
+    function renderPlace(step) {
+      if (step._from) body.appendChild(h("div", { class: "pill" }, step._from));
+      body.appendChild(h("div", { class: "question" }, step.q || "Place au bon endroit."));
+      if (step.instruction) body.appendChild(h("div", { class: "logic-instr", html: "📋 " + step.instruction }));
+
+      const pieceById = (id) => step.pieces.find((p) => p.id === id);
+      const placed = {}; step.zones.forEach((z) => (placed[z.id] = null));
+      let tray = step.pieces.map((p) => p.id);
+
+      const boardHost = h("div");
+      const trayEl = h("div", { class: "place-tray" });
+      body.appendChild(boardHost);
+      body.appendChild(h("div", { class: "muted center", style: { fontSize: "13px", margin: "6px 0" } }, "⬇️ Fais glisser les étiquettes dans les bonnes cases."));
+      body.appendChild(trayEl);
+
+      let dragPid = null, clone = null;
+      function glyphSpan(g, color, size) { const s = h("span", {}, g); s.style.fontSize = (size || 24) + "px"; if (color) s.style.color = color; return s; }
+      function makePiece(pid) {
+        const p = pieceById(pid);
+        const el = h("div", { class: "place-piece", "data-pid": pid });
+        if (p.glyph) el.appendChild(glyphSpan(p.glyph, p.color, 26));
+        else { if (p.color) { el.classList.add("brick"); el.style.background = p.color; } el.appendChild(h("span", {}, p.label || "")); }
+        attachDrag(el, pid);
+        return el;
+      }
+      function moveClone(e) { if (!clone) return; clone.style.left = (e.clientX - clone.offsetWidth / 2) + "px"; clone.style.top = (e.clientY - clone.offsetHeight / 2) + "px"; }
+      function cleanup() { if (clone) { clone.remove(); clone = null; } dragPid = null; }
+      function detach(pid) { tray = tray.filter((x) => x !== pid); for (const z in placed) if (placed[z] === pid) placed[z] = null; }
+      function attachDrag(el, pid) {
+        el.addEventListener("pointerdown", (e) => {
+          if (body._validated) return;
+          dragPid = pid;
+          const r = el.getBoundingClientRect();
+          clone = el.cloneNode(true); clone.classList.add("place-drag");
+          clone.style.width = r.width + "px"; clone.style.height = r.height + "px";
+          document.body.appendChild(clone); el.style.opacity = ".25"; moveClone(e);
+          try { el.setPointerCapture(e.pointerId); } catch (_) {}
+          e.preventDefault();
+        });
+        el.addEventListener("pointermove", (e) => { if (dragPid === pid) moveClone(e); });
+        el.addEventListener("pointerup", (e) => { if (dragPid === pid) drop(e); });
+        el.addEventListener("pointercancel", () => { cleanup(); render(); });
+      }
+      function drop(e) {
+        const t = document.elementFromPoint(e.clientX, e.clientY);
+        const zoneEl = t && t.closest ? t.closest(".place-zone") : null;
+        const trayDrop = t && t.closest ? t.closest(".place-tray") : null;
+        const pid = dragPid;
+        if (zoneEl) { const zid = zoneEl.getAttribute("data-zid"); detach(pid); if (placed[zid]) tray.push(placed[zid]); placed[zid] = pid; }
+        else if (trayDrop) { detach(pid); if (tray.indexOf(pid) < 0) tray.push(pid); }
+        cleanup(); render();
+      }
+      function zoneCell(z) {
+        const el = h("div", { class: "place-zone", "data-zid": z.id });
+        if (placed[z.id]) el.appendChild(makePiece(placed[z.id]));
+        else if (z.label) el.appendChild(h("span", { class: "muted" }, z.label));
+        return el;
+      }
+      function hdr(c) {
+        if (c.glyph) return glyphSpan(c.glyph, c.color, 22);
+        if (c.color && !c.label) { const sw = h("div", { class: "pg-swatch" }); sw.style.background = c.color; return sw; }
+        return h("span", {}, c.label || "");
+      }
+      function renderSequence() {
+        const row = h("div", { class: "place-seq" });
+        step.sequence.forEach((item) => {
+          if (item.zoneId) row.appendChild(zoneCell(step.zones.find((z) => z.id === item.zoneId)));
+          else row.appendChild(h("div", { class: "place-fixed" }, item.glyph ? glyphSpan(item.glyph, item.color, 26) : (item.label || "")));
+        });
+        return row;
+      }
+      function renderGrid() {
+        const g = step.grid;
+        const tbl = h("div", { class: "place-grid" });
+        const head = h("div", { class: "pg-row" }); head.appendChild(h("div", { class: "pg-corner" }));
+        g.colHeaders.forEach((c) => head.appendChild(h("div", { class: "pg-head" }, hdr(c))));
+        tbl.appendChild(head);
+        g.rowHeaders.forEach((rh, ri) => {
+          const row = h("div", { class: "pg-row" });
+          row.appendChild(h("div", { class: "pg-head" }, hdr(rh)));
+          g.colHeaders.forEach((ch, ci) => row.appendChild(zoneCell(step.zones.find((z) => z.row === ri && z.col === ci))));
+          tbl.appendChild(row);
+        });
+        return tbl;
+      }
+      function render() {
+        boardHost.innerHTML = "";
+        boardHost.appendChild(step.layout === "grid" ? renderGrid() : renderSequence());
+        trayEl.innerHTML = "";
+        tray.forEach((pid) => trayEl.appendChild(makePiece(pid)));
+      }
+      render();
+
+      const validate = () => {
+        if (body._validated) return;
+        if (!step.zones.every((z) => placed[z.id])) { CV.UI.toast("Place toutes les étiquettes d'abord 🙂"); return; }
+        body._validated = true;
+        let good = true;
+        step.zones.forEach((z) => {
+          const ok = String(pieceById(placed[z.id]).key) === String(z.expect);
+          if (!ok) good = false;
+          const el = boardHost.querySelector('.place-zone[data-zid="' + z.id + '"]');
+          if (el) el.classList.add(ok ? "ok" : "ko");
+        });
+        showFeedback(good, step.explain || (good ? "" : "Regarde bien la consigne."));
       };
       body.appendChild(h("button", { class: "btn block mt", onclick: validate }, "Valider"));
     }

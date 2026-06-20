@@ -112,6 +112,30 @@ CV.WORLDS = [
   }
 ];
 
+// Surcharge locale des chemins (éditeur de l'outil de placement). Persiste sur l'appareil
+// jusqu'à ce qu'on les recopie en dur ici. Appliquée au chargement.
+try {
+  const ov = JSON.parse(localStorage.getItem("cv_paths_override") || "{}");
+  CV.WORLDS.forEach((w) => { if (ov[w.key]) w.paths = ov[w.key]; });
+} catch (e) {}
+CV.savePathsOverride = function (worldKey, paths) {
+  let ov = {};
+  try { ov = JSON.parse(localStorage.getItem("cv_paths_override") || "{}"); } catch (e) {}
+  ov[worldKey] = paths;
+  try { localStorage.setItem("cv_paths_override", JSON.stringify(ov)); } catch (e) {}
+};
+// Idem pour la position des pierres (nodes)
+try {
+  const ov = JSON.parse(localStorage.getItem("cv_nodes_override") || "{}");
+  CV.WORLDS.forEach((w) => { if (ov[w.key]) w.nodes = ov[w.key]; });
+} catch (e) {}
+CV.saveNodesOverride = function (worldKey, nodes) {
+  let ov = {};
+  try { ov = JSON.parse(localStorage.getItem("cv_nodes_override") || "{}"); } catch (e) {}
+  ov[worldKey] = nodes;
+  try { localStorage.setItem("cv_nodes_override", JSON.stringify(ov)); } catch (e) {}
+};
+
 CV.worldByIndex = function (i) { return CV.WORLDS[i] || CV.WORLDS[0]; };
 CV.worldIndexOfLevel = function (lvl) { return Math.floor((lvl - 1) / CV.LEVELS_PER_WORLD); };
 CV.nodeIndexOfLevel = function (lvl) { return (lvl - 1) % CV.LEVELS_PER_WORLD; };

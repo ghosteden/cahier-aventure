@@ -224,6 +224,7 @@ window.CV = window.CV || {};
   // --- Éditeur de chemins (dans l'outil de placement) ---
   let editSeg = null;          // index du segment de chemin en édition (paths[editSeg]) ou null
   let editPath = null;         // copie de travail : [{x,y,jump}]
+  let editNodes = null;        // copie de travail des pierres : [{x,y}] (mode repositionnement) ou null
   let selPoint = -1;           // point sélectionné dans editPath
   let mapCam = null;           // dernière position caméra (px) — évite de recentrer pendant l'édition
   let curMapW = null;          // monde actuellement affiché (pour les actions de l'éditeur)
@@ -311,11 +312,23 @@ window.CV = window.CV || {};
   }
   // Charge le segment n de curMapW dans editPath (n=null pour quitter l'édition)
   function loadSegment(n) {
-    editSeg = n; selPoint = -1;
+    editSeg = n; editNodes = null; selPoint = -1;
     if (n == null) { editPath = null; return; }
     const raw = (curMapW && curMapW.paths && curMapW.paths[n]) ? curMapW.paths[n] : [];
     editPath = []; let j = false;
     raw.forEach((it) => { if (it === "jump") { j = true; return; } editPath.push({ x: it[0], y: it[1], jump: j }); j = false; });
+  }
+  // Mode repositionnement des pierres : copie les nodes dans editNodes
+  function loadNodes() {
+    editSeg = null; editPath = null; selPoint = -1;
+    editNodes = (curMapW ? curMapW.nodes : []).map((n) => ({ x: n[0], y: n[1] }));
+  }
+  function nodesToArray(en) { return "[" + en.map((p) => "[" + p.x + ", " + p.y + "]").join(", ") + "]"; }
+  function ndSave() {
+    if (!editNodes || !curMapW) return;
+    curMapW.nodes = editNodes.map((p) => [p.x, p.y]);
+    if (CV.saveNodesOverride) CV.saveNodesOverride(curMapW.key, curMapW.nodes);
+    UI.toast("💾 Position des pierres enregistrée !");
   }
   function edToggleJump() { if (selPoint >= 0) { editPath[selPoint].jump = !editPath[selPoint].jump; renderCarte(); } }
   function edDelete() { if (selPoint >= 0) { editPath.splice(selPoint, 1); selPoint = Math.min(selPoint, editPath.length - 1); renderCarte(); } }
@@ -329,6 +342,23 @@ window.CV = window.CV || {};
     editPath.splice(i + 1, 0, np); selPoint = i + 1; renderCarte();
   }
   function edAddEnd(x, y) { editPath.push({ x: x, y: y, jump: false }); selPoint = editPath.length - 1; renderCarte(); }
+  // editPath -> format brut stocké dans paths[] (avec les "jump")
+  function edToRaw(ep) { const raw = []; ep.forEach((p) => { if (p.jump) raw.push("jump"); raw.push([p.x, p.y]); }); return raw; }
+  // Enregistre le chemin édité (persiste sur l'appareil via localStorage)
+  function edSave() {
+    if (editSeg == null || !editPath || !curMapW) return;
+    if (!curMapW.paths) curMapW.paths = [];
+    curMapW.paths[editSeg] = edToRaw(editPath);
+    if (CV.savePathsOverride) CV.savePathsOverride(curMapW.key, curMapW.paths);
+    UI.toast("💾 Chemin " + (editSeg + 1) + "→" + (editSeg + 2) + " enregistré !");
+  }
+  // Tous les chemins du monde, formatés pour coller dans program.js
+  function pathsToText(paths) {
+    return "[\n" + (paths || []).map((raw) => {
+      const parts = []; (raw || []).forEach((it) => { if (it === "jump") parts.push('"jump"'); else parts.push("[" + it[0] + ", " + it[1] + "]"); });
+      return "      [" + parts.join(", ") + "]";
+    }).join(",\n") + "\n    ]";
+  }
 
   function renderPlacePanel() {
     document.querySelectorAll(".place-panel").forEach((e) => e.remove());
@@ -336,14 +366,30 @@ window.CV = window.CV || {};
       h("span", {}, "⠿ Déplace ce panneau"),
       h("span", { class: "pp-mini", onclick: (e) => { e.stopPropagation(); document.querySelector(".place-panel").classList.toggle("mini"); } }, "▽"));
 
-    // Sélecteur de segment de chemin à éditer
+    // Sélecteur : placement libre / repositionner les pierres / éditer un chemin
     const nPaths = (curMapW && curMapW.paths) ? curMapW.paths.length : 0;
-    const sel = h("select", { id: "seg-sel", onchange: (e) => { loadSegment(e.target.value === "" ? null : +e.target.value); renderCarte(); } });
-    sel.appendChild(h("option", { value: "" }, "— Pierres (placement libre) —"));
+    const sel = h("select", { id: "seg-sel", onchange: (e) => {
+      const v = e.target.value;
+      if (v === "nodes") loadNodes();
+      else loadSegment(v === "" ? null : +v);
+      renderCarte();
+    } });
+    sel.appendChild(h("option", { value: "" }, "— Placement libre des pierres —"));
+    { const o = h("option", { value: "nodes" }, "🪨 Repositionner les pierres"); if (editNodes) o.selected = true; sel.appendChild(o); }
     for (let i = 0; i < nPaths; i++) { const o = h("option", { value: String(i) }, "Chemin " + (i + 1) + "→" + (i + 2)); if (i === editSeg) o.selected = true; sel.appendChild(o); }
 
     let body;
-    if (editSeg != null && editPath) {
+    if (editNodes) {
+      const ta = h("textarea", { id: "nodes-ta", readonly: "" }); ta.value = nodesToArray(editNodes);
+      body = h("div", { class: "pp-body" },
+        h("div", {}, "Éditer : "), sel,
+        h("div", { class: "pp-hint" }, "Glisse les pierres pour les repositionner, puis Enregistre."),
+        ta,
+        h("div", { class: "btn-row", style: { marginTop: "6px" } },
+          h("button", { class: "btn good small", onclick: ndSave }, "💾 Enregistrer"),
+          h("button", { class: "btn ghost small", onclick: () => { const t = document.getElementById("nodes-ta"); t.select(); document.execCommand("copy"); } }, "📋 Copier"),
+          h("button", { class: "btn small", onclick: () => { placeMode = false; editNodes = null; renderCarte(); } }, "✅ Fini")));
+    } else if (editSeg != null && editPath) {
       const actions = selPoint >= 0
         ? h("div", { class: "btn-row", style: { marginTop: "6px" } },
             h("button", { class: "btn small", onclick: edToggleJump }, editPath[selPoint] && editPath[selPoint].jump ? "❌ retirer saut" : "🦘 saut"),
@@ -356,7 +402,10 @@ window.CV = window.CV || {};
         h("div", { class: "pp-hint" }, "Glisse les points • clique pour sélectionner • double-clic sur la carte = ajouter à la fin."),
         actions, ta,
         h("div", { class: "btn-row", style: { marginTop: "6px" } },
-          h("button", { class: "btn ghost small", onclick: () => { const t = document.getElementById("path-ta"); t.select(); document.execCommand("copy"); } }, "📋 Copier"),
+          h("button", { class: "btn good small", onclick: edSave }, "💾 Enregistrer"),
+          h("button", { class: "btn ghost small", onclick: () => { const t = document.getElementById("path-ta"); t.select(); document.execCommand("copy"); } }, "📋 Ce chemin"),
+          h("button", { class: "btn ghost small", onclick: () => { navigator.clipboard && navigator.clipboard.writeText(pathsToText(curMapW.paths)); UI.toast("📋 Tous les chemins copiés"); } }, "📋 Tous")),
+        h("div", { class: "btn-row", style: { marginTop: "6px" } },
           h("button", { class: "btn small", onclick: () => { placeMode = false; loadSegment(null); renderCarte(); } }, "✅ Fini")));
     } else {
       body = h("div", { class: "pp-body" },
@@ -439,7 +488,7 @@ window.CV = window.CV || {};
       h("button", { class: "world-arrow", disabled: mapViewIndex >= curWorldIndex ? "" : null,
         onclick: () => { if (mapViewIndex < curWorldIndex) { mapViewIndex++; renderCarte(); } } }, "›"),
       h("button", { class: "world-arrow", style: placeMode ? { background: "var(--gold)", color: "#000" } : null,
-        title: "Placer les pierres", onclick: () => { placeMode = !placeMode; placePoints = []; editSeg = null; editPath = null; selPoint = -1; mapCam = null; renderCarte(); } }, "📍"),
+        title: "Placer les pierres", onclick: () => { placeMode = !placeMode; placePoints = []; editSeg = null; editPath = null; editNodes = null; selPoint = -1; mapCam = null; renderCarte(); } }, "📍"),
       h("div", { class: "chip gold" }, "⭐" + (state.stars || 0)),
       h("div", { class: "chip fire" }, "🔥" + (state.streak.count || 0))));
     const banner = installBanner();
@@ -479,6 +528,8 @@ window.CV = window.CV || {};
       const stars = done ? (dp.stars || 1) : 0;
       const isCurrent = level === curLevel;
       const locked = level > curLevel;
+      // En mode repositionnement, les pierres sont remplacées par des poignées déplaçables.
+      if (placeMode && editNodes) return;
       // Hors outil de placement : on n'affiche que les pierres déverrouillées.
       // En mode placement : on affiche TOUT (repère pour tracer les chemins).
       if (locked && !placeMode) return;
@@ -644,6 +695,24 @@ window.CV = window.CV || {};
         });
         // double-clic sur la carte = ajouter un point à la fin du chemin édité
         viewport.addEventListener("dblclick", (e) => { const [x, y] = pctOf(e); edAddEnd(x, y); });
+      } else if (editNodes) {
+        // ---- Repositionnement des pierres ----
+        const line = svgEl('<svg class="path-lines" viewBox="0 0 100 100" preserveAspectRatio="none"><path fill="none" stroke="rgba(255,255,255,.45)" stroke-width="0.4" stroke-dasharray="1 1"/></svg>');
+        const linePath = line.querySelector("path");
+        const redrawLine = () => { linePath.setAttribute("d", editNodes.map((p, k) => (k ? "L" : "M") + p.x + " " + p.y).join(" ")); };
+        layer.appendChild(line); redrawLine();
+        editNodes.forEach((p, i) => {
+          const hd = h("div", { class: "edit-handle" + (i === selPoint ? " sel" : ""), style: { left: p.x + "%", top: p.y + "%", "--pc": "#ffd23f" } }, i === 8 ? "👑" : String(i + 1));
+          hd.addEventListener("pointerdown", (e) => {
+            e.stopPropagation(); e.preventDefault();
+            selPoint = i; document.querySelectorAll(".edit-handle.sel").forEach((el) => el.classList.remove("sel")); hd.classList.add("sel");
+            try { hd.setPointerCapture(e.pointerId); } catch (_) {}
+            const move = (ev) => { const [nx, ny] = pctOf(ev); editNodes[i].x = nx; editNodes[i].y = ny; hd.style.left = nx + "%"; hd.style.top = ny + "%"; redrawLine(); const ta = document.getElementById("nodes-ta"); if (ta) ta.value = nodesToArray(editNodes); };
+            const up = () => { try { hd.releasePointerCapture(e.pointerId); } catch (_) {} hd.removeEventListener("pointermove", move); hd.removeEventListener("pointerup", up); };
+            hd.addEventListener("pointermove", move); hd.addEventListener("pointerup", up);
+          });
+          layer.appendChild(hd);
+        });
       } else {
         // Placement libre des pierres (ancien comportement)
         placePoints.forEach((p, i) => layer.appendChild(h("div", { class: "place-marker", style: { left: p[0] + "%", top: p[1] + "%" } }, String(i + 1))));

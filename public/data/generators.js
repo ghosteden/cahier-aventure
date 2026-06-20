@@ -350,8 +350,47 @@ window.CV = window.CV || {};
       tokens, solutionKeys: seq, explain: "Une couleur sur deux, sans jamais deux pareilles côte à côte." };
   };
 
+  /* Suite de motifs : compléter la case vide d'une suite qui se répète. */
+  CV.gen.suiteMotifs = function () {
+    const PAIRS = [["🔴", "🔵"], ["🟡", "🟢"], ["⭐", "🌙"], ["🔺", "🟦"], ["🍎", "🍌"], ["🐱", "🐶"]];
+    const pair = pick(PAIRS);
+    const patt = pick([["A", "B"], ["A", "A", "B"], ["A", "B", "B"]]);
+    const map = { A: pair[0], B: pair[1] };
+    const base = patt.map((x) => map[x]);
+    const seq = []; for (let i = 0; i < 6; i++) seq.push(base[i % base.length]);
+    const holeAt = 5;
+    const answer = seq[holeAt];
+    const sequence = seq.map((g, i) => (i === holeAt ? { zoneId: "z0" } : { glyph: g }));
+    const distract = pick(["⚡", "🌟", "🟣", "🍒"].filter((x) => pair.indexOf(x) < 0));
+    const cands = shuffleArr([answer, pair[0] === answer ? pair[1] : pair[0], distract]);
+    const pieces = cands.map((g, i) => ({ id: "p" + i, key: g, glyph: g }));
+    return { type: "place", layout: "sequence", q: "Continue la suite.",
+      instruction: "Quelle image continue la suite ? Glisse-la dans la case vide.",
+      sequence, zones: [{ id: "z0", expect: answer }], pieces,
+      explain: "La suite se répète : " + base.join(" ") + " …" };
+  };
+
+  /* Tableau à double entrée : placer chaque forme (couleur en ligne, forme en colonne). */
+  CV.gen.doubleEntry = function () {
+    const COLORS = [{ name: "rouge", c: "#e63946" }, { name: "bleu", c: "#3a7bd5" }, { name: "vert", c: "#2a9d8f" }, { name: "orange", c: "#e8871e" }];
+    const SHAPES = [{ g: "●" }, { g: "■" }, { g: "▲" }, { g: "★" }];
+    const rows = shuffleArr(COLORS.slice()).slice(0, 2);
+    const cols = shuffleArr(SHAPES.slice()).slice(0, 3);
+    const pieces = [], zones = [];
+    rows.forEach((col, ri) => cols.forEach((sh, ci) => {
+      const key = ri + "-" + ci;
+      pieces.push({ id: "t" + key, key, glyph: sh.g, color: col.c });
+      zones.push({ id: "z" + key, row: ri, col: ci, expect: key });
+    }));
+    return { type: "place", layout: "grid", q: "Le tableau à double entrée.",
+      instruction: "Place chaque forme dans la case de SA couleur (ligne) ET de SA forme (colonne).",
+      grid: { colHeaders: cols.map((s) => ({ glyph: s.g })), rowHeaders: rows.map((c) => ({ color: c.c })) },
+      zones, pieces: shuffleArr(pieces),
+      explain: "On croise la ligne (couleur) et la colonne (forme)." };
+  };
+
   /* Choisit un jeu de logique au hasard. */
   CV.gen.logic = function () {
-    return pick([CV.gen.logicSize, CV.gen.logicNumber, CV.gen.logicAlpha, CV.gen.logicPattern])();
+    return pick([CV.gen.logicSize, CV.gen.logicNumber, CV.gen.logicAlpha, CV.gen.suiteMotifs, CV.gen.doubleEntry])();
   };
 })();
