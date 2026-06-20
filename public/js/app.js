@@ -218,7 +218,9 @@ window.CV = window.CV || {};
   let mapDragged = false;      // pour distinguer clic / glissement
   let placeMode = false;       // outil de placement des pierres
   let placePoints = [];        // coordonnées relevées en mode placement
+  let daySession = null;       // progression de la journée en cours (étapes)
   let lastHeroNode = {};       // { [worldIndex]: nodeIdx } pour détecter une avancée du héros
+  let mapAPI = null;           // API de la carte courante (ex. walkTo) pour piloter le héros depuis ailleurs
 
   /* Jeton du héros :
      - si le monde a une planche d'animation (w.anim) → sprite animé (idle/walk/happy/sad/jump) ;
@@ -260,9 +262,9 @@ window.CV = window.CV || {};
     }
   }
 
-  /* Oriente le sprite. Le dessin regarde à GAUCHE par défaut : faceRight=true => miroir horizontal. */
+  /* Oriente le sprite. Le dessin regarde à DROITE par défaut : faceRight=true => pas de miroir. */
   function setHeroFacing(tok, faceRight) {
-    tok.style.transform = faceRight ? "scaleX(-1)" : "scaleX(1)";
+    tok.style.transform = faceRight ? "scaleX(1)" : "scaleX(-1)";
   }
 
   function updatePlacePanel() {
@@ -406,21 +408,6 @@ window.CV = window.CV || {};
     const worldDone = worldIndex < curWorldIndex;
     const curNodeIdx = worldIndex === curWorldIndex ? CV.nodeIndexOfLevel(curLevel) : (worldDone ? 8 : -1);
 
-    // Brouillard de guerre (sauf monde entièrement terminé ou outil de placement actif)
-    if (!worldDone && !placeMode) {
-      const revealed = [];
-      w.nodes.forEach((n, i) => { if (i <= curNodeIdx) revealed.push(n); });
-      let circles = "";
-      revealed.forEach((n, i) => {
-        const r = i === revealed.length - 1 ? 20 : 16;
-        circles += '<circle cx="' + n[0] + '" cy="' + n[1] + '" r="' + r + '" fill="url(#hole)"/>';
-      });
-      layer.appendChild(svgEl('<svg class="map-fog" viewBox="0 0 100 100" preserveAspectRatio="none">' +
-        '<defs><radialGradient id="hole"><stop offset="0" stop-color="black"/><stop offset="55%" stop-color="black"/><stop offset="100%" stop-color="white"/></radialGradient>' +
-        '<mask id="fogmask"><rect width="100" height="100" fill="white"/>' + circles + '</mask></defs>' +
-        '<rect width="100" height="100" fill="#0a0a14" opacity="0.8" mask="url(#fogmask)"/></svg>'));
-    }
-
     // Pierres
     w.nodes.forEach((n, i) => {
       const level = CV.levelNumber(worldIndex, i);
@@ -430,70 +417,121 @@ window.CV = window.CV || {};
       const stars = done ? (dp.stars || 1) : 0;
       const isCurrent = level === curLevel;
       const locked = level > curLevel;
-      if (locked) return;                       // on n'affiche que les pierres déverrouillées
+      // Hors outil de placement : on n'affiche que les pierres déverrouillées.
+      // En mode placement : on affiche TOUT (repère pour tracer les chemins).
+      if (locked && !placeMode) return;
       let kind = "open";
-      if (isBoss) kind = "boss";
+      if (locked) kind = "locked";
+      else if (isBoss) kind = "boss";
       else if (done) kind = stars <= 1 ? "cracked" : "done";
-      const cls = "stone" + (isBoss ? " boss" : "") + (isCurrent ? " current" : "");
+      const cls = "stone" + (locked ? " locked" : "") + (isBoss ? " boss" : "") + (isCurrent ? " current" : "");
       const stone = h("div", { class: cls, style: { left: n[0] + "%", top: n[1] + "%" } });
       stone.appendChild(stoneSVG(kind));
-      stone.appendChild(h("div", { class: "stone-num" }, isBoss ? "👑" : String(i + 1)));
+      stone.appendChild(h("div", { class: "stone-num" }, locked ? "🔒" : (isBoss ? "👑" : String(i + 1))));
       if (done) stone.appendChild(h("div", { class: "stone-stars" }, "⭐".repeat(stars)));
       stone.addEventListener("click", (e) => {
         e.stopPropagation();
         if (mapDragged) return;
+        if (locked) { UI.toast("🔒 Termine la pierre précédente d'abord !"); return; }
         openNodeSheet(level);
       });
       layer.appendChild(stone);
     });
 
-    // Personnage à la case courante (ou à la fin si monde terminé)
-    const heroNode = w.nodes[curNodeIdx >= 0 ? curNodeIdx : 0];
+    // ---- Chemins entre les pierres (w.paths[i] = tracé du nœud i au nœud i+1) ----
+    // Le DERNIER point d'un tracé = la position de repos du dino à côté de la pierre d'arrivée.
+    const parsePts = (raw) => { const out = []; let pend = false; (raw || []).forEach((it) => {
+      if (it === "jump") { pend = true; return; } out.push({ pt: it, jump: pend }); pend = false; }); return out; };
+    const restPos = (i) => { const pp = (w.paths && i - 1 >= 0) ? parsePts(w.paths[i - 1]) : []; return pp.length ? pp[pp.length - 1].pt : w.nodes[i]; };
+    const segForward = (a) => { const pp = parsePts(w.paths && w.paths[a]); return pp.length ? pp.map((e) => ({ to: e.pt, jump: e.jump })) : [{ to: w.nodes[a + 1], jump: false }]; };
+    const segBackward = (a) => { const pp = parsePts(w.paths && w.paths[a - 1]); if (!pp.length) return [{ to: w.nodes[a - 1], jump: false }];
+      // On rejoint d'abord le DERNIER point du chemin (juste avant l'obstacle), puis on parcourt à l'envers.
+      const legs = [{ to: pp[pp.length - 1].pt, jump: false }];
+      for (let k = pp.length - 1; k >= 1; k--) legs.push({ to: pp[k - 1].pt, jump: pp[k].jump });
+      return legs; };
+    const buildRoute = (fromIdx, toIdx) => { const legs = [];
+      if (toIdx > fromIdx) for (let a = fromIdx; a < toIdx; a++) legs.push.apply(legs, segForward(a));
+      else for (let a = fromIdx; a > toIdx; a--) legs.push.apply(legs, segBackward(a));
+      return legs; };
+
+    // Personnage : posé à sa position de repos (à côté de la pierre courante)
+    const heroNodeIdx = curNodeIdx >= 0 ? curNodeIdx : 0;
+    const heroStart = restPos(heroNodeIdx);
     const tok = heroToken(w, 64);
-    const hero = h("div", { class: "hero-sprite" + (w.anim ? " anim" : ""), style: { left: heroNode[0] + "%", top: heroNode[1] + "%" } }, tok);
+    const hero = h("div", { class: "hero-sprite" + (w.anim ? " anim" : ""), style: { left: heroStart[0] + "%", top: heroStart[1] + "%" } }, tok);
     layer.appendChild(hero);
 
-    // ---- Caméra : translation de la map (centrée sur un nœud, avec pan animé possible) ----
+    // ---- Caméra : translation de la map (centrée sur un point, avec pan animé possible) ----
     const minTx = Math.min(0, vw - lw), minTy = Math.min(0, vh - lh);
     let tx = 0, ty = 0;
     const apply = () => { layer.style.transform = "translate(" + tx + "px," + ty + "px)"; };
-    const camFor = (node) => {
-      const cx = (node[0] / 100) * lw, cy = (node[1] / 100) * lh;
-      return [clamp(vw / 2 - cx, minTx, 0), clamp(vh / 2 - cy, minTy, 0)];
-    };
-    const setCam = (node, sec) => { [tx, ty] = camFor(node); layer.style.transition = sec ? ("transform " + sec + "s linear") : "none"; apply(); };
+    const camFor = (pt) => { const cx = (pt[0] / 100) * lw, cy = (pt[1] / 100) * lh; return [clamp(vw / 2 - cx, minTx, 0), clamp(vh / 2 - cy, minTy, 0)]; };
+    const setCam = (pt, sec) => { [tx, ty] = camFor(pt); layer.style.transition = sec ? ("transform " + sec + "s linear") : "none"; apply(); };
 
-    // Le héros vient-il d'avancer d'une pierre (niveau réussi) ?
+    // Anime le héros le long d'une liste de tronçons {to:[x,y], jump:bool}. La caméra suit.
+    const walkLegs = (legs, fromPt) => {
+      let cur = fromPt;
+      const step = (idx) => {
+        if (idx >= legs.length) { setHeroFacing(tok, true); tok._setMode("idle"); return; }
+        const pt = legs[idx].to, dx = pt[0] - cur[0], dy = pt[1] - cur[1];
+        if (Math.abs(dx) > 0.3) setHeroFacing(tok, dx > 0);
+        const next = () => { cur = pt; step(idx + 1); };
+        if (legs[idx].jump) {
+          // Saut : le dino s'accroupit (s'arrête) puis bondit en suivant une parabole.
+          tok._setMode("jump", { once: true, then: "walk" });
+          hero.style.transition = "none";
+          const durMs = (w.anim.jump && w.anim.jump.dur ? w.anim.jump.dur : 0.7) * 1000;
+          const crouchMs = Math.min(180, durMs * 0.3), arcMs = durMs - crouchMs;
+          const peak = Math.max(5, Math.min(11, Math.hypot(dx, dy) * 1.2));  // hauteur de la cloche
+          setTimeout(() => {
+            const frames = [];
+            for (let k = 0; k <= 16; k++) { const t = k / 16; frames.push({
+              left: (cur[0] + dx * t) + "%", top: (cur[1] + dy * t - peak * 4 * t * (1 - t)) + "%" }); }
+            const anim = hero.animate(frames, { duration: arcMs, easing: "linear" });
+            setCam(pt, arcMs / 1000);
+            anim.onfinish = () => { hero.style.left = pt[0] + "%"; hero.style.top = pt[1] + "%"; try { anim.cancel(); } catch (_) {} next(); };
+          }, crouchMs);
+        } else {
+          if (Math.hypot(dx, dy) < 0.25) { next(); return; }   // tronçon quasi nul : on passe
+          tok._setMode("walk");
+          const dur = Math.max(0.28, Math.min(1.4, Math.hypot(dx, dy) * 0.06));
+          hero.style.transition = "left " + dur + "s linear, top " + dur + "s linear";
+          void hero.offsetWidth;
+          hero.style.left = pt[0] + "%"; hero.style.top = pt[1] + "%";
+          setCam(pt, dur);
+          setTimeout(next, dur * 1000);
+        }
+      };
+      step(0);
+    };
+
+    let heroVisualIdx = heroNodeIdx;   // nœud où se trouve visuellement le héros
+
+    // Le héros vient-il d'avancer d'une pierre (niveau réussi) ? -> joie puis marche le long du chemin
     const prev = lastHeroNode[worldIndex];
     const advanced = tok._setMode && prev != null && prev >= 0 && curNodeIdx > prev && w.nodes[prev];
     lastHeroNode[worldIndex] = curNodeIdx;
     if (advanced) {
-      const from = w.nodes[prev], to = heroNode;
-      // 1) départ sur l'ANCIENNE pierre, caméra centrée dessus
-      hero.style.transition = "none";
-      hero.style.left = from[0] + "%"; hero.style.top = from[1] + "%";
-      setCam(from, 0);
-      void hero.offsetWidth;
-      // 2) animation de joie sur place
+      const startPt = restPos(prev);
+      hero.style.transition = "none"; hero.style.left = startPt[0] + "%"; hero.style.top = startPt[1] + "%";
+      setCam(startPt, 0); void hero.offsetWidth;
       tok._setMode("happy", { once: true });
-      const happyMs = (w.anim.happy.dur || 0.6) * 1000;
-      // 3) après la joie : marche jusqu'à la nouvelle pierre ; la caméra suit
-      setTimeout(() => {
-        const goRight = to[0] > from[0];
-        setHeroFacing(tok, goRight);
-        tok._setMode("walk");
-        const dist = Math.hypot(to[0] - from[0], to[1] - from[1]);
-        const dur = Math.max(0.5, Math.min(2.2, dist * 0.07));
-        hero.style.transition = "left " + dur + "s linear, top " + dur + "s linear";
-        void hero.offsetWidth;
-        hero.style.left = to[0] + "%"; hero.style.top = to[1] + "%";
-        setCam(to, dur);                          // caméra synchronisée avec la marche
-        // 4) arrivé : il regarde de nouveau vers l'avant et repasse en idle
-        setTimeout(() => { setHeroFacing(tok, true); tok._setMode("idle"); }, dur * 1000);
-      }, happyMs);
+      const legs = buildRoute(prev, curNodeIdx);
+      setTimeout(() => walkLegs(legs, startPt), (w.anim.happy.dur || 0.6) * 1000);
     } else {
-      setCam(heroNode, 0);
+      setCam(heroStart, 0);
     }
+
+    // API : rejoindre une pierre en suivant les chemins (à contresens si elle est derrière)
+    mapAPI = {
+      walkTo: (targetIdx) => {
+        if (!tok._setMode || targetIdx < 0 || targetIdx === heroVisualIdx) return;
+        const fromPt = [parseFloat(hero.style.left), parseFloat(hero.style.top)];
+        const legs = buildRoute(heroVisualIdx, targetIdx);
+        heroVisualIdx = targetIdx;
+        walkLegs(legs, fromPt);
+      }
+    };
 
     // Outil de placement : marqueurs + relevé des coordonnées au double-clic
     if (placeMode) {
@@ -537,6 +575,8 @@ window.CV = window.CV || {};
 
   /* Petit panneau d'une pierre (au tap) */
   function openNodeSheet(level) {
+    // le héros rejoint la pierre cliquée en suivant les chemins (à contresens si besoin)
+    if (mapAPI && mapAPI.walkTo) mapAPI.walkTo(CV.nodeIndexOfLevel(level));
     const state = Store.current();
     const lv = CV.getLevel(level);
     const mod = lv.moduleId ? CV.getModule(lv.moduleId) : null;
@@ -567,13 +607,10 @@ window.CV = window.CV || {};
 
   /* Termine un niveau instantanément (bouton de test). */
   function skipLevel(level) {
-    const state = Store.current();
     const lv = CV.getLevel(level);
-    if (lv.moduleId) {
-      const mod = CV.getModule(lv.moduleId);
-      Game.awardModule(state, mod, 1, 1);
-    }
-    finishLevel(lv, 3, null, null, true);
+    if (lv.isBoss) { finishLevel(lv, 3, null, null, true); return; }
+    daySession = null;
+    finishDay(lv, 3, null, null);
   }
 
   /* ---------- Ouvrir un niveau ---------- */
@@ -584,13 +621,70 @@ window.CV = window.CV || {};
     if (lv.level > (state.currentDay || 1)) { goto("#/carte"); return; }
     UI.applyTheme(lv.theme);
     if (lv.isBoss) return playBoss(lv);
-    playModule(CV.getModule(lv.moduleId), lv);
+    renderDayProgram(level);
   }
 
-  /* ---------- Leçon ---------- */
-  function playModule(mod, lv) {
+  /* ---------- Programme du jour (écran d'étapes) ---------- */
+  function renderDayProgram(level) {
+    const lv = CV.getLevel(level);
+    const plan = CV.dayPlan(level);
+    if (!plan) return goto("#/carte");
+    if (!daySession || daySession.level !== level) {
+      daySession = { level, plan, done: plan.steps.map(() => null), correct: 0, total: 0 };
+    }
     const c = screen();
     c.appendChild(backBar("#/carte", "Carte"));
+    c.appendChild(h("h2", { class: "section-title" }, "📋 Programme du jour"));
+    c.appendChild(h("p", { class: "muted", style: { marginTop: "-8px" } }, lv.worldName + " · fais chaque étape dans l'ordre"));
+
+    const firstTodo = daySession.done.findIndex((d) => !d);
+    daySession.plan.steps.forEach((s, i) => {
+      const res = daySession.done[i];
+      const isCurrent = firstTodo === i;
+      const locked = firstTodo >= 0 && i > firstTodo;
+      const card = h("div", { class: "card row", style: { gap: "14px", cursor: locked ? "default" : "pointer", opacity: locked ? ".5" : "1" },
+        onclick: () => { if (!locked) runStep(i); } },
+        h("div", { style: { fontSize: "30px" } }, s.icon),
+        h("div", { style: { flex: "1" } },
+          h("div", { style: { fontWeight: "bold", color: "var(--ink)" } }, s.label),
+          h("div", { class: "muted", style: { fontSize: "13px" } }, stepDesc(s))),
+        res ? h("div", { style: { fontSize: "18px" } }, "✅ " + res.correct + "/" + res.total)
+            : isCurrent ? h("div", { class: "btn small" }, "Jouer →")
+            : h("div", { style: { fontSize: "20px" } }, "🔒"));
+      c.appendChild(card);
+    });
+
+    if (daySession.done.every(Boolean)) {
+      c.appendChild(h("button", { class: "btn big gold block mt", onclick: () => {
+        finishDay(lv, Game.starsForScore(daySession.correct, daySession.total), daySession.correct, daySession.total);
+      } }, "🏁 Terminer la journée"));
+    }
+    c.appendChild(h("button", { class: "btn debug block mt", onclick: () => skipLevel(level) }, "🔓 Débloquer (test)"));
+  }
+
+  function stepDesc(s) {
+    if (s.kind === "dictee") { const n = s.count || 1; return n + " phrase" + (n > 1 ? "s" : "") + " à écouter et écrire"; }
+    if (s.kind === "probleme") return "Lis bien la consigne et résous";
+    const mod = CV.getModule(s.moduleId);
+    return mod ? mod.title : "";
+  }
+
+  function programBack() {
+    return h("div", { class: "h-row" },
+      h("button", { class: "btn ghost small", onclick: () => renderDayProgram(daySession.level) }, "← Programme"),
+      h("span", { class: "pill" }, Store.current().displayName));
+  }
+
+  function runStep(i) {
+    const s = daySession.plan.steps[i];
+    if (s.kind === "lesson") return runLessonStep(i, s);
+    return runExerciseStep(i, s, null);
+  }
+
+  function runLessonStep(i, s) {
+    const mod = CV.getModule(s.moduleId);
+    const c = screen();
+    c.appendChild(programBack());
     const card = h("div", { class: "card" });
     card.appendChild(h("div", { class: "lesson-icon" }, mod.icon));
     card.appendChild(h("h2", { class: "center" }, mod.title));
@@ -600,44 +694,44 @@ window.CV = window.CV || {};
     card.appendChild(ul);
     if (mod.lesson.example) card.appendChild(h("div", { class: "lesson-example", html: "📌 " + mod.lesson.example }));
     if (mod.lesson.tip) card.appendChild(h("div", { class: "lesson-tip", html: mod.lesson.tip }));
-    card.appendChild(h("button", { class: "btn big block mt", onclick: () => playExercises(mod, lv) },
-      mod.isDictee ? "🎧 Commencer la dictée →" : "✏️ Au défi ! →"));
-    card.appendChild(h("button", { class: "btn debug block mt", onclick: () => skipLevel(lv.level) }, "🔓 Débloquer (test)"));
+    card.appendChild(h("button", { class: "btn big block mt", onclick: () => runExerciseStep(i, s, mod) }, "✏️ Au défi ! →"));
     c.appendChild(card);
   }
 
-  /* ---------- Exercices d'un module ---------- */
-  function playExercises(mod, lv) {
+  function runExerciseStep(i, s, mod) {
     const c = screen();
-    c.appendChild(backBar("#/carte", "Carte"));
-    c.appendChild(h("h2", { class: "section-title" }, mod.icon + " " + mod.title));
+    c.appendChild(programBack());
+    c.appendChild(h("h2", { class: "section-title" }, s.icon + " " + s.label));
     const box = h("div", { class: "card" });
     c.appendChild(box);
-    const exercises = CV.exercisesFor ? CV.exercisesFor(mod) : mod.exercises;
-    CV.Engine.run(box, exercises, {
-      onComplete: ({ correct, total }) => {
-        const res = Game.awardModule(Store.current(), mod, correct, total);
-        Store.save();
-        showLevelResult(mod, lv, correct, total, res);
-      }
-    });
+    const exercises = CV.exercisesForStep(s);
+    CV.Engine.run(box, exercises, { onComplete: ({ correct, total }) => finishStep(i, s, mod, correct, total) });
   }
 
-  function showLevelResult(mod, lv, correct, total, res) {
+  function finishStep(i, s, mod, correct, total) {
+    daySession.done[i] = { correct, total };
+    daySession.correct += correct; daySession.total += total;
     const state = Store.current();
-    const r = Game.completeDay(state, lv, res.stars);
+    if (mod) Game.awardModule(state, mod, correct, total);
+    if (s.kind === "dictee") { state.flags = state.flags || {}; state.flags.dicteeDone = true; }
     Store.save();
-    mapViewIndex = null;
-    const badges = (res.newBadges || []).concat(r.newBadges || []);
+    renderDayProgram(daySession.level);
+  }
+
+  function finishDay(lv, stars, correct, total) {
+    const state = Store.current();
+    const r = Game.completeDay(state, lv, stars);
+    Store.save();
+    mapViewIndex = null; daySession = null;
     const c = screen();
     UI.victory(c, {
-      emoji: res.stars === 3 ? "🌟" : "🎉",
-      title: res.stars === 3 ? "Sans faute, incroyable !" : "Bien joué !",
-      stars: res.stars,
-      subtitle: correct + " / " + total + " bonnes réponses",
-      badges: badges,
+      emoji: stars === 3 ? "🌟" : "🎉",
+      title: "Journée réussie !",
+      stars: stars,
+      subtitle: correct != null ? (correct + " / " + total + " bonnes réponses sur la journée") : "Bravo, champion !",
+      badges: r.newBadges || [],
       cta: "Retour à la carte 🗺️",
-      onContinue: () => { goto("#/carte"); }
+      onContinue: () => goto("#/carte")
     });
   }
 

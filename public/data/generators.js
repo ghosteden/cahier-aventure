@@ -222,3 +222,92 @@ window.CV = window.CV || {};
     return mod.exercises || [];
   };
 })();
+
+/* =========================================================
+   Générateurs supplémentaires + banque de dictées (ajout)
+   ========================================================= */
+(function () {
+  const R = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+  /* Ponctuation : quel signe à la fin de la phrase ? */
+  CV.gen.ponctuation = function () {
+    const sets = [
+      { q: "Comment t'appelles-tu", a: 1 }, { q: "Quel beau cadeau", a: 2 },
+      { q: "Je lis un livre", a: 0 }, { q: "Où vas-tu", a: 1 },
+      { q: "Attention, ça brûle", a: 2 }, { q: "Le chat dort sur le canapé", a: 0 },
+      { q: "As-tu fini tes devoirs", a: 1 }, { q: "Comme c'est joli", a: 2 },
+      { q: "Nous allons à la mer", a: 0 }, { q: "Quelle heure est-il", a: 1 }
+    ];
+    const s = pick(sets);
+    return { type: "qcm", q: "Quel signe à la fin de : « " + s.q + " … » ?", choices: [".", "?", "!"], answer: s.a,
+      explain: s.a === 1 ? "C'est une question → ?" : s.a === 2 ? "Une émotion → !" : "Une phrase qui raconte → ." };
+  };
+
+  /* Sujet du verbe */
+  CV.gen.sujetVerbe = function () {
+    const phr = [
+      ["Le chien", "aboie"], ["Les oiseaux", "chantent"], ["Ma sœur", "danse"],
+      ["Les enfants", "jouent"], ["Le soleil", "brille"], ["Papa", "cuisine"],
+      ["Les fleurs", "poussent"], ["Mon ami", "court"], ["La maîtresse", "explique"]
+    ];
+    const p = pick(phr);
+    const det = p[0].split(" ")[0];
+    const choices = shuffleArr([p[0], p[1], det]);
+    return { type: "qcm", q: "Dans « " + p[0] + " " + p[1] + " », quel est le sujet ?", choices,
+      answer: choices.indexOf(p[0]), explain: "Qui est-ce qui " + p[1] + " ? → " + p[0] + "." };
+  };
+
+  /* Synonymes */
+  CV.gen.synonyme = function () {
+    const paires = [["beau", "joli"], ["content", "heureux"], ["rapide", "véloce"],
+      ["gentil", "aimable"], ["drôle", "amusant"], ["triste", "malheureux"],
+      ["grand", "immense"], ["petit", "minuscule"], ["calme", "tranquille"]];
+    const m = pick(paires);
+    const flip = Math.random() < .5;
+    const mot = flip ? m[1] : m[0], rep = flip ? m[0] : m[1];
+    return { type: "fill", q: "Donne un synonyme de « " + mot + " » : ___", answer: [rep, m[0], m[1]],
+      explain: mot + " = " + rep };
+  };
+
+  function shuffleArr(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+  /* ---- Banque de dictées CE2 (progressives) ---- */
+  CV.DICTEES = [
+    "Le chat dort sur le canapé.",
+    "Maman prépare un bon gâteau.",
+    "Les oiseaux chantent dans le jardin.",
+    "Je mange une pomme rouge.",
+    "Le petit lapin court dans le pré.",
+    "Mon frère joue avec un ballon bleu.",
+    "La maîtresse écrit au tableau.",
+    "Nous lisons une belle histoire.",
+    "Les enfants rangent leurs cahiers.",
+    "Le soleil brille dans le ciel bleu.",
+    "Papa lave la voiture le samedi.",
+    "Ma sœur arrose les jolies fleurs.",
+    "Le chien aboie très fort la nuit.",
+    "Les poissons nagent dans l'aquarium.",
+    "Je mets mes chaussures et mon manteau.",
+    "À la récréation, nous jouons au ballon.",
+    "Le boulanger vend du pain chaud.",
+    "Les feuilles tombent en automne.",
+    "Le vélo de Tom est tout neuf.",
+    "Nous plantons des graines dans la terre.",
+    "La lune éclaire la forêt sombre.",
+    "Les abeilles butinent les fleurs du jardin.",
+    "Le maître raconte une aventure passionnante.",
+    "En hiver, la neige recouvre les toits des maisons.",
+    "Les élèves écoutent attentivement la leçon.",
+    "Le renard roux traverse rapidement le chemin.",
+    "Pendant les vacances, nous visitons un grand château.",
+    "Les nuages gris annoncent un orage violent."
+  ];
+
+  /* Construit un exercice de dictée avec n phrases tirées au hasard. */
+  CV.drawDictee = function (n) {
+    n = Math.max(1, n || 1);
+    const idx = shuffleArr(CV.DICTEES.map((_, i) => i)).slice(0, n);
+    return { type: "dictee", q: "Écris la phrase que tu entends.", sentences: idx.map((i) => CV.DICTEES[i]) };
+  };
+})();

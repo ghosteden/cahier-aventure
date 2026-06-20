@@ -437,7 +437,7 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 /* Héros : jeton animé, fond transparent (image hero-*.png ou emoji de secours).
    Décalé à droite du nœud pour se tenir À CÔTÉ de la pierre (laisse la pierre cliquable). */
 .hero-sprite {
-  position:absolute; transform: translate(calc(-50% + 46px), -52%); z-index:6; pointer-events:none;
+  position:absolute; transform: translate(-50%, -82%); z-index:6; pointer-events:none;
 }
 .hero-token { position:relative; display:flex; align-items:center; justify-content:center; overflow:hidden; }
 /* Le sens du regard (miroir scaleX) est posé en inline par setHeroFacing(). */
