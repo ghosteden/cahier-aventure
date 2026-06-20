@@ -30,14 +30,12 @@ CV.UI = (function () {
   }
 
   function statusBar(state) {
-    const li = CV.Game.levelInfo(state.xp);
     const avatar = { espace: "🧑‍🚀", pirates: "🏴‍☠️", chevaliers: "🛡️", dinosaure: "🦖", ulysse: "🏛️" }[state.theme] || "🦖";
     return h("div", { class: "status-bar" },
       h("div", { class: "status-avatar" }, avatar),
       h("div", { class: "status-info" },
         h("div", { class: "status-name" }, state.displayName + " · " + state.grade),
-        h("div", { class: "status-level" }, "Niveau " + li.level + " · " + li.into + "/" + li.need + " XP"),
-        h("div", { class: "xp-track" }, h("div", { class: "xp-fill", style: { width: li.pct + "%" } }))
+        h("div", { class: "status-level" }, "Aventurier des savoirs")
       ),
       h("div", { class: "status-chips" },
         h("div", { class: "chip gold" }, "⭐ " + (state.stars || 0)),
@@ -66,8 +64,7 @@ CV.UI = (function () {
       h("div", { class: "victory-emoji" }, opts.emoji || "🏆"),
       h("h2", {}, opts.title || "Bravo !"),
       opts.stars ? h("div", {}, stars(opts.stars)) : null,
-      opts.subtitle ? h("p", { class: "muted" }, opts.subtitle) : null,
-      opts.xp ? h("p", { class: "pill" }, "+" + opts.xp + " XP") : null
+      opts.subtitle ? h("p", { class: "muted" }, opts.subtitle) : null
     );
     if (opts.badges && opts.badges.length) {
       box.appendChild(h("p", { class: "mt" }, "Nouveau" + (opts.badges.length > 1 ? "x" : "") + " trophée" + (opts.badges.length > 1 ? "x" : "") + " !"));

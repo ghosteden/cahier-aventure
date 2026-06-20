@@ -360,17 +360,21 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 /* Les pierres-cases */
 .stone {
   position:absolute; transform: translate(-50%, -50%);
-  width: 64px; height: 64px; cursor:pointer;
+  width: 58px; height: 58px; cursor:pointer;
   display:flex; align-items:center; justify-content:center;
-  background-repeat:no-repeat; background-size:600% 300%;   /* planche stones.png : 6 colonnes × 3 lignes */
   filter: drop-shadow(0 4px 4px rgba(0,0,0,.5));
 }
-/* Numéro affiché seulement sur les pierres déverrouillées (ajouté en JS), posé sur le corps de la pierre */
-.stone .stone-num { position:relative; font-weight:bold; font-size:19px; color:#fff8e1;
-  text-shadow:0 1px 3px #000, 0 0 3px #000; margin-top:6px; pointer-events:none; }
+.stone .stone-svg { position:absolute; inset:0; width:100%; height:100%; }
+.stone .stone-num { position:relative; font-weight:bold; font-size:20px; color:#fff8e1; text-shadow:0 1px 2px #000; }
+.stone .stone-stars {
+  position:absolute; bottom:-12px; left:50%; transform:translateX(-50%);
+  font-size:13px; white-space:nowrap; text-shadow:0 1px 2px #000;
+}
 .stone.locked { cursor: default; }
-.stone.boss { width: 82px; height: 82px; }
-.stone.boss .stone-num { font-size: 26px; }
+.stone.current { animation: stonebob 1.4s ease-in-out infinite; }
+@keyframes stonebob { 0%,100%{ transform:translate(-50%,-50%) } 50%{ transform:translate(-50%,-62%) } }
+.stone.boss { width: 74px; height: 74px; }
+.stone.boss .stone-num { font-size: 30px; }
 
 /* Le personnage (sprite) */
 .hero-sprite {

@@ -5,14 +5,6 @@
 window.CV = window.CV || {};
 
 CV.Game = (function () {
-  const XP_PER_LEVEL = 150;
-
-  function levelInfo(xp) {
-    const level = Math.floor(xp / XP_PER_LEVEL) + 1;
-    const into = xp % XP_PER_LEVEL;
-    return { level, into, need: XP_PER_LEVEL, pct: Math.round((into / XP_PER_LEVEL) * 100) };
-  }
-
   function starsForScore(correct, total) {
     if (total <= 0) return 1;
     const r = correct / total;
@@ -45,8 +37,8 @@ CV.Game = (function () {
     { id: "perfect",   emoji: "💯", name: "Sans-faute",      check: (s) => Object.values(s.progress).some((p) => p.bestStars === 3) },
     { id: "speller",   emoji: "🎧", name: "As de la dictée",  check: (s) => !!s.flags && s.flags.dicteeDone },
     { id: "explorer",  emoji: "🔬", name: "Explorateur",      check: (s) => !!s.flags && s.flags.funDone },
-    { id: "level5",    emoji: "⭐", name: "Niveau 5",         check: (s) => levelInfo(s.xp).level >= 5 },
-    { id: "level10",   emoji: "✨", name: "Niveau 10",        check: (s) => levelInfo(s.xp).level >= 10 },
+    { id: "stars15",   emoji: "⭐", name: "15 étoiles",       check: (s) => (s.stars || 0) >= 15 },
+    { id: "stars40",   emoji: "✨", name: "40 étoiles",       check: (s) => (s.stars || 0) >= 40 },
     { id: "boss_dino", emoji: "🦖", name: "Maître des Dinos",  check: (s) => !!s.flags && s.flags.boss_dinosaure },
     { id: "boss_uly",  emoji: "🏛️", name: "Héros de l'Olympe", check: (s) => !!s.flags && s.flags.boss_ulysse },
     { id: "boss_chev", emoji: "⚔️", name: "Grand Chevalier",  check: (s) => !!s.flags && s.flags.boss_chevaliers },
@@ -75,14 +67,7 @@ CV.Game = (function () {
     const firstTime = !state.progress[mod.id];
     const prev = state.progress[mod.id] || { bestStars: 0 };
 
-    // XP : 8 par bonne réponse + bonus étoiles ; un peu moins en rejouant.
-    let xpGained = correct * 8 + stars * 10;
-    if (!firstTime) xpGained = Math.round(xpGained * 0.4);
-
-    const before = levelInfo(state.xp).level;
-    state.xp += xpGained;
     state.stars = (state.stars || 0) + (firstTime ? stars : Math.max(0, stars - prev.bestStars));
-    const after = levelInfo(state.xp).level;
 
     state.progress[mod.id] = {
       done: true,
@@ -101,7 +86,7 @@ CV.Game = (function () {
     touchStreak(state);
     const newBadges = evaluateBadges(state);
 
-    return { xpGained, stars, leveledUp: after > before, newLevel: after, newBadges };
+    return { stars, newBadges };
   }
 
   /* ---- Récompense d'une journée terminée (toutes ses étapes) ---- */
@@ -112,7 +97,6 @@ CV.Game = (function () {
     state.dayProgress[dayObj.day] = { done: true, stars: Math.max(prev ? prev.stars : 0, stars) };
 
     if (firstTime) {
-      state.xp += dayObj.reward || 0;
       state.stats.sessions = (state.stats.sessions || 0) + 1;
     }
     // Avance le jour courant si on vient de finir le jour courant
@@ -127,5 +111,5 @@ CV.Game = (function () {
     return { newBadges };
   }
 
-  return { levelInfo, starsForScore, touchStreak, evaluateBadges, badgeList, awardModule, completeDay };
+  return { starsForScore, touchStreak, evaluateBadges, badgeList, awardModule, completeDay };
 })();

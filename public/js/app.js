@@ -406,8 +406,8 @@ window.CV = window.CV || {};
     const worldDone = worldIndex < curWorldIndex;
     const curNodeIdx = worldIndex === curWorldIndex ? CV.nodeIndexOfLevel(curLevel) : (worldDone ? 8 : -1);
 
-    // Brouillard de guerre (sauf monde entièrement terminé)
-    if (!worldDone) {
+    // Brouillard de guerre (sauf monde entièrement terminé ou outil de placement actif)
+    if (!worldDone && !placeMode) {
       const revealed = [];
       w.nodes.forEach((n, i) => { if (i <= curNodeIdx) revealed.push(n); });
       let circles = "";
@@ -430,25 +430,18 @@ window.CV = window.CV || {};
       const stars = done ? (dp.stars || 1) : 0;
       const isCurrent = level === curLevel;
       const locked = level > curLevel;
-      // Planche stones.png : ligne = style de pierre (selon le monde), colonne = état.
-      // colonnes : 0 herbe(verrouillée) · 1 nue(dispo) · 2 fissurée · 3 ⭐ · 4 ⭐⭐ · 5 ⭐⭐⭐
-      const styleRow = (w.stoneStyle != null ? w.stoneStyle : (worldIndex % 3));
-      let col;
-      if (locked) col = 0;
-      else if (done) col = stars >= 1 ? Math.min(5, 2 + stars) : 2;
-      else col = 1;
-      const cls = "stone" + (locked ? " locked" : "") + (isBoss ? " boss" : "") + (isCurrent ? " current" : "");
-      const stone = h("div", { class: cls, style: {
-        left: n[0] + "%", top: n[1] + "%",
-        backgroundImage: "url(assets/stones.png)",
-        backgroundPosition: (col / 5 * 100) + "% " + (styleRow / 2 * 100) + "%"
-      } });
-      // numéro uniquement sur les pierres déverrouillées (👑 pour le boss)
-      if (!locked) stone.appendChild(h("div", { class: "stone-num" }, isBoss ? "👑" : String(i + 1)));
+      if (locked) return;                       // on n'affiche que les pierres déverrouillées
+      let kind = "open";
+      if (isBoss) kind = "boss";
+      else if (done) kind = stars <= 1 ? "cracked" : "done";
+      const cls = "stone" + (isBoss ? " boss" : "") + (isCurrent ? " current" : "");
+      const stone = h("div", { class: cls, style: { left: n[0] + "%", top: n[1] + "%" } });
+      stone.appendChild(stoneSVG(kind));
+      stone.appendChild(h("div", { class: "stone-num" }, isBoss ? "👑" : String(i + 1)));
+      if (done) stone.appendChild(h("div", { class: "stone-stars" }, "⭐".repeat(stars)));
       stone.addEventListener("click", (e) => {
         e.stopPropagation();
         if (mapDragged) return;
-        if (locked) { UI.toast("🔒 Termine la pierre précédente d'abord !"); return; }
         openNodeSheet(level);
       });
       layer.appendChild(stone);
@@ -642,10 +635,9 @@ window.CV = window.CV || {};
       title: res.stars === 3 ? "Sans faute, incroyable !" : "Bien joué !",
       stars: res.stars,
       subtitle: correct + " / " + total + " bonnes réponses",
-      xp: res.xpGained,
       badges: badges,
       cta: "Retour à la carte 🗺️",
-      onContinue: () => { if (res.leveledUp) UI.toast("⬆️ Niveau " + res.newLevel + " !"); goto("#/carte"); }
+      onContinue: () => { goto("#/carte"); }
     });
   }
 
@@ -792,8 +784,7 @@ window.CV = window.CV || {};
       statLine("Défis terminés", st.modulesDone || 0),
       statLine("Bonnes réponses", (st.totalCorrect || 0) + " (" + pct + "% de réussite)"),
       statLine("Étoiles gagnées", "⭐ " + (state.stars || 0)),
-      statLine("Meilleure série", "🔥 " + (state.streak.count || 0) + " jours"),
-      statLine("Niveau", Game.levelInfo(state.xp).level)
+      statLine("Meilleure série", "🔥 " + (state.streak.count || 0) + " jours")
     ));
   }
 
