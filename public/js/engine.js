@@ -190,24 +190,34 @@ CV.Engine = (function () {
       });
       body.appendChild(input);
 
-      // Saisie tactile (écriture au stylet/doigt), repliée par défaut.
-      const padHost = h("div");
-      let padOpen = false;
-      const toggle = h("button", { class: "btn ghost small mt", type: "button", onclick: () => {
-        if (body._validated) return;
-        padOpen = !padOpen;
-        padHost.innerHTML = "";
-        if (padOpen) {
-          padHost.appendChild(handwritingPad(numeric, (t) => {
-            input.value = numeric ? t : ((input.value ? input.value.replace(/\s+$/, "") + " " : "") + t);
-          }));
-          toggle.textContent = "⌨️ Cacher l'écriture";
-        } else {
-          toggle.textContent = "✍️ Écrire à la main";
-        }
-      } }, "✍️ Écrire à la main");
-      body.appendChild(toggle);
-      body.appendChild(padHost);
+      // Saisie tactile : pavé numérique pour les nombres (fiable partout).
+      if (numeric) {
+        const pad = h("div", { class: "numpad" });
+        ["1", "2", "3", "4", "5", "6", "7", "8", "9", "del", "0", "blank"].forEach((k) => {
+          if (k === "blank") { pad.appendChild(h("div")); return; }
+          const key = h("button", { class: "numkey" + (k === "del" ? " del" : ""), type: "button", onclick: () => {
+            if (body._validated) return;
+            if (k === "del") input.value = input.value.slice(0, -1);
+            else input.value = (input.value || "") + k;
+          } }, k === "del" ? "⌫" : k);
+          pad.appendChild(key);
+        });
+        body.appendChild(pad);
+      } else if (navigator.createHandwritingRecognizer) {
+        // Écriture manuscrite : seulement là où le navigateur sait la reconnaître (ChromeOS).
+        const padHost = h("div");
+        let padOpen = false;
+        const toggle = h("button", { class: "btn ghost small mt", type: "button", onclick: () => {
+          if (body._validated) return;
+          padOpen = !padOpen; padHost.innerHTML = "";
+          if (padOpen) {
+            padHost.appendChild(handwritingPad(false, (t) => { input.value = (input.value ? input.value.replace(/\s+$/, "") + " " : "") + t; }));
+            toggle.textContent = "⌨️ Cacher l'écriture";
+          } else { toggle.textContent = "✍️ Écrire à la main"; }
+        } }, "✍️ Écrire à la main");
+        body.appendChild(toggle);
+        body.appendChild(padHost);
+      }
 
       const validate = () => {
         if (body._validated) return;
@@ -221,7 +231,6 @@ CV.Engine = (function () {
         }
         body._validated = true;
         input.disabled = true;
-        toggle.disabled = true;
         input.style.borderColor = good ? "var(--good)" : "var(--bad)";
         const corr = Array.isArray(step.answer) ? step.answer[0] : step.answer;
         showFeedback(good, (step.explain || "") + (good ? "" : "  → Réponse : " + corr));
@@ -298,9 +307,14 @@ CV.Engine = (function () {
       function moveClone(e) { if (!clone) return; clone.style.left = (e.clientX - clone.offsetWidth / 2) + "px"; clone.style.top = (e.clientY - clone.offsetHeight / 2) + "px"; }
       function cleanup() { if (clone) { clone.remove(); clone = null; } if (dragging) dragging.style.opacity = ""; dragging = null; fromIdx = null; }
       function drop(e) {
-        const target = document.elementFromPoint(e.clientX, e.clientY);
-        const slot = target && target.closest ? target.closest(".logic-slot") : null;
-        if (slot) { const toIdx = +slot.getAttribute("data-idx"); if (toIdx !== fromIdx && !isNaN(toIdx)) { const t = order[fromIdx]; order[fromIdx] = order[toIdx]; order[toIdx] = t; } }
+        // Dépôt tolérant : on prend la case la PLUS PROCHE du doigt.
+        let best = null, bd = 1e9;
+        Array.from(slotsWrap.children).forEach((slot) => {
+          const r = slot.getBoundingClientRect();
+          const d = Math.hypot(r.left + r.width / 2 - e.clientX, r.top + r.height / 2 - e.clientY);
+          if (d < bd) { bd = d; best = slot; }
+        });
+        if (best && bd < 170) { const toIdx = +best.getAttribute("data-idx"); if (toIdx !== fromIdx && !isNaN(toIdx)) { const t = order[fromIdx]; order[fromIdx] = order[toIdx]; order[toIdx] = t; } }
         cleanup(); renderSlots();
       }
       function attachDrag(te, idx) {
@@ -388,12 +402,16 @@ CV.Engine = (function () {
         el.addEventListener("pointercancel", () => { cleanup(); render(); });
       }
       function drop(e) {
-        const t = document.elementFromPoint(e.clientX, e.clientY);
-        const zoneEl = t && t.closest ? t.closest(".place-zone") : null;
-        const trayDrop = t && t.closest ? t.closest(".place-tray") : null;
         const pid = dragPid;
-        if (zoneEl) { const zid = zoneEl.getAttribute("data-zid"); detach(pid); if (placed[zid]) tray.push(placed[zid]); placed[zid] = pid; }
-        else if (trayDrop) { detach(pid); if (tray.indexOf(pid) < 0) tray.push(pid); }
+        // Dépôt tolérant : la case la plus proche du doigt (sinon retour au bac).
+        let best = null, bd = 1e9;
+        boardHost.querySelectorAll(".place-zone").forEach((z) => {
+          const r = z.getBoundingClientRect();
+          const d = Math.hypot(r.left + r.width / 2 - e.clientX, r.top + r.height / 2 - e.clientY);
+          if (d < bd) { bd = d; best = z; }
+        });
+        if (best && bd < 150) { const zid = best.getAttribute("data-zid"); detach(pid); if (placed[zid]) tray.push(placed[zid]); placed[zid] = pid; }
+        else { detach(pid); if (tray.indexOf(pid) < 0) tray.push(pid); }
         cleanup(); render();
       }
       function zoneCell(z) {
@@ -486,9 +504,11 @@ CV.Engine = (function () {
         h("button", { class: "btn ghost small", onclick: () => clearCanvas() }, "🧽 Effacer"));
 
       const grid = h("div", { class: "dictee-screen" },
-        h("div", {}, h("div", { class: "dictee-pane-label" }, "📝 Ta phrase"), ta),
-        h("div", {}, h("div", { class: "dictee-pane-label" }, "✍️ Écris au stylet (ou au doigt)"), canvas, hwTools)
-      );
+        h("div", {}, h("div", { class: "dictee-pane-label" }, "📝 Ta phrase"), ta));
+      // Le stylet ne sert que si la reconnaissance d'écriture existe (ChromeOS).
+      if (hwSupported) {
+        grid.appendChild(h("div", {}, h("div", { class: "dictee-pane-label" }, "✍️ Écris au stylet (ou au doigt)"), canvas, hwTools));
+      }
       body.appendChild(grid);
 
       // --- Logique du canvas ---

@@ -580,3 +580,13 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 .pg-head { width:46px; min-height:46px; display:flex; align-items:center; justify-content:center; font-weight:bold; color:var(--ink); }
 .pg-swatch { width:30px; height:30px; border-radius:8px; border:2px solid rgba(0,0,0,.2); }
 .pg-row .place-zone { min-width:46px; min-height:46px; }
+
+/* ---- Pavé numérique tactile ---- */
+.numpad { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:12px; max-width:300px; margin-left:auto; margin-right:auto; }
+.numkey {
+  font-family:var(--font); font-size:24px; font-weight:bold; color:var(--ink);
+  background:#fff; border:none; border-radius:14px; padding:14px 0; cursor:pointer;
+  box-shadow:0 4px 0 rgba(0,0,0,.2); user-select:none;
+}
+.numkey:active { transform:translateY(3px); box-shadow:0 1px 0 rgba(0,0,0,.2); }
+.numkey.del { background:#ffe0e6; color:#8a1430; }
