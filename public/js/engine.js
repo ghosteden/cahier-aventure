@@ -52,7 +52,7 @@ CV.Engine = (function () {
       steps.map(() => h("div", { class: "ex-dot" })));
     const body = h("div");
     container.innerHTML = "";
-    container.appendChild(dots);
+    if (!opts.compact) container.appendChild(dots);
     container.appendChild(body);
 
     function setDot(i, ok) {

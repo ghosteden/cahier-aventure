@@ -483,25 +483,81 @@ window.CV = window.CV || {};
     });
   }
 
-  /* ---------- Boss ---------- */
+  /* ---------- Boss : combat héros vs boss ---------- */
+  const BOSS = {
+    dinosaure:  { emoji: "🦖", name: "le T-Rex", hp: 6 },
+    ulysse:     { emoji: "🐲", name: "le Minotaure", hp: 6 },
+    chevaliers: { emoji: "🐉", name: "le Dragon", hp: 7 },
+    pirate:     { emoji: "☠️", name: "le Capitaine Fantôme", hp: 7 },
+    espace:     { emoji: "👾", name: "l'Alien", hp: 8 }
+  };
+
   function playBoss(lv) {
-    const exs = CV.buildBossExercises(lv, 8);
+    const state = Store.current();
+    const cfg = BOSS[lv.world] || { emoji: "👾", name: "le Boss", hp: 6 };
+    const pool = CV.buildBossExercises(lv, 16);
     const c = screen();
     c.appendChild(backBar("#/carte", "Carte"));
-    c.appendChild(h("h2", { class: "section-title" }, "👑 Le Grand Défi — " + lv.worldName));
-    const box = h("div", { class: "card" });
-    c.appendChild(box);
+    c.appendChild(h("h2", { class: "section-title" }, "👑 Boss — " + lv.worldName));
+    if (!pool.length) { c.appendChild(h("div", { class: "card" }, h("p", {}, "Termine d'abord les leçons de ce monde !"))); return; }
+
+    let heroHP = 3, bossHP = cfg.hp, qi = 0;
+    const w = CV.worldByIndex(CV.worldIndexOfLevel(lv.level));
+    const heroEl = h("div", { class: "fighter hero", style: spriteStyle(w, 84) });
+    const bossEl = h("div", { class: "fighter boss" }, cfg.emoji);
+    const heroHpEl = h("div", { class: "hp" });
+    const bossHpEl = h("div", { class: "hp" });
+    const scene = h("div", { class: "combat-scene" },
+      h("div", { class: "fighter-col" }, heroHpEl, heroEl, h("div", { class: "fname" }, state.displayName)),
+      h("div", { class: "combat-vs" }, "⚔️"),
+      h("div", { class: "fighter-col" }, bossHpEl, bossEl, h("div", { class: "fname" }, cfg.name)));
+    c.appendChild(scene);
+    const intro = h("p", { class: "center muted", style: { marginTop: "-4px" } }, "Réponds juste pour attaquer ! Une erreur et c'est toi qui prends un coup. 3 erreurs = recommencer.");
+    c.appendChild(intro);
+    const qbox = h("div", { class: "card" });
+    c.appendChild(qbox);
     c.appendChild(h("button", { class: "btn debug block mt", onclick: () => skipLevel(lv.level) }, "🔓 Débloquer (test)"));
-    if (!exs.length) { box.appendChild(h("p", {}, "Termine d'abord les leçons de ce monde !")); return; }
-    CV.Engine.run(box, exs, {
-      onComplete: ({ correct, total }) => {
-        const state = Store.current();
-        const stars = Game.starsForScore(correct, total);
-        state.xp += correct * 10;
-        Store.save();
-        finishLevel(lv, stars, correct, total, false);
-      }
-    });
+
+    function updateHP() {
+      heroHpEl.textContent = "❤️".repeat(Math.max(0, heroHP)) + "🤍".repeat(Math.max(0, 3 - heroHP));
+      bossHpEl.textContent = "💚".repeat(Math.max(0, bossHP)) + "🖤".repeat(Math.max(0, cfg.hp - bossHP));
+    }
+    function fx(emo) { const f = h("div", { class: "combat-hitfx" }, emo); scene.appendChild(f); setTimeout(() => f.remove(), 600); }
+
+    updateHP();
+    nextQ();
+
+    function nextQ() {
+      if (bossHP <= 0) return win();
+      if (heroHP <= 0) return lose();
+      const ex = pool[qi % pool.length]; qi++;
+      CV.Engine.run(qbox, [ex], {
+        compact: true,
+        onComplete: ({ correct }) => {
+          if (correct) { bossHP--; heroEl.classList.add("attack-r"); bossEl.classList.add("hit"); fx("💥"); }
+          else { heroHP--; bossEl.classList.add("attack-l"); heroEl.classList.add("hit"); fx("💢"); }
+          updateHP();
+          setTimeout(() => { heroEl.className = "fighter hero"; bossEl.className = "fighter boss"; nextQ(); }, 850);
+        }
+      });
+    }
+
+    function win() {
+      const stars = Math.max(1, heroHP);
+      UI.confetti();
+      UI.toast(cfg.name + " est vaincu ! 🎉");
+      finishLevel(lv, stars, cfg.hp, cfg.hp, false);
+    }
+
+    function lose() {
+      const cc = screen();
+      cc.appendChild(h("div", { class: "card center" },
+        h("div", { style: { fontSize: "72px" } }, cfg.emoji),
+        h("h2", {}, cfg.name + " t'a vaincu… 😵"),
+        h("p", { class: "muted" }, "Pas grave, les héros réessaient toujours ! Tu vas y arriver."),
+        h("button", { class: "btn big block mt", onclick: () => playBoss(lv) }, "↻ Réessayer le combat"),
+        h("button", { class: "btn ghost block mt", onclick: () => goto("#/carte") }, "← Retour à la carte")));
+    }
   }
 
   /* ---------- Fin d'un niveau ---------- */
