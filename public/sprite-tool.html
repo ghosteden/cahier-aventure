@@ -49,7 +49,13 @@
       <label><input type="checkbox" id="key" checked> Fond transparent</label>
       <label>Seuil : <input type="range" id="thr" min="20" max="160" value="70"> <span id="thrv">70</span></label>
     </div>
+    <div class="row" style="margin-top:10px">
+      <button class="alt" id="auto">🔍 Auto-détecter les poses</button>
+      <label><input type="checkbox" id="showboxes" checked> Afficher les boîtes auto</label>
+      <label>Marge mini entre poses : <input type="number" id="gap" value="2" min="1" max="40" style="width:60px"> px</label>
+    </div>
     <p class="hint" id="cellinfo"></p>
+    <p class="hint" id="autoinfo"></p>
   </div>
 
   <h2>Planche (clique une case)</h2>
@@ -74,6 +80,9 @@ const NAT_W = 1408, NAT_H = 768; // taille native des planches (sauf fusée)
 let img = new Image();
 let off = document.createElement("canvas");   // planche en résolution native (éventuellement détourée)
 let sel = { col: 0, row: 0 };
+let boxes = [];          // boîtes détectées auto : {x,y,w,h}
+let selBox = -1;         // index de la boîte cliquée (-1 = mode grille)
+let dispScale = 1;
 
 function load() {
   const key = $("sheet").value;
@@ -100,62 +109,145 @@ function buildNative() {
   }
 }
 
+// ---- Détection auto des poses via le canal alpha -------------------------
+// Projette l'alpha sur les lignes pour trouver les bandes horizontales (rangées),
+// puis sur les colonnes dans chaque bande pour isoler chaque pose.
+function autoDetect() {
+  buildNative();
+  const W = off.width, H = off.height;
+  const data = off.getContext("2d").getImageData(0, 0, W, H).data;
+  const minGap = +$("gap").value;          // nb de px vides qui sépare deux poses
+  const aAt = (x, y) => data[(y * W + x) * 4 + 3] > 24; // pixel "plein" ?
+
+  // projection horizontale : nb de px pleins par ligne
+  const rowFull = new Array(H).fill(0);
+  for (let y = 0; y < H; y++) { let n = 0; for (let x = 0; x < W; x++) if (aAt(x, y)) n++; rowFull[y] = n; }
+  const bands = segments(rowFull, minGap); // [{a,b}] rangées de contenu
+
+  boxes = [];
+  for (const band of bands) {
+    // projection verticale limitée à la bande
+    const colFull = new Array(W).fill(0);
+    for (let x = 0; x < W; x++) { let n = 0; for (let y = band.a; y <= band.b; y++) if (aAt(x, y)) n++; colFull[x] = n; }
+    const cols = segments(colFull, minGap);
+    for (const c of cols) {
+      // resserre verticalement la boîte sur le contenu réel de cette colonne
+      let top = band.b, bot = band.a;
+      for (let y = band.a; y <= band.b; y++) for (let x = c.a; x <= c.b; x++) if (aAt(x, y)) { if (y < top) top = y; if (y > bot) bot = y; break; }
+      boxes.push({ x: c.a, y: top, w: c.b - c.a + 1, h: bot - top + 1 });
+    }
+  }
+  // statistiques de taille
+  if (boxes.length) {
+    const ws = boxes.map(b => b.w), hs = boxes.map(b => b.h);
+    const med = (arr) => { const s = [...arr].sort((p, q) => p - q); return s[s.length >> 1]; };
+    $("autoinfo").innerHTML = "✅ <b>" + boxes.length + " poses</b> détectées — taille médiane <b>" +
+      med(ws) + " × " + med(hs) + "</b> px (min " + Math.min(...ws) + "×" + Math.min(...hs) +
+      ", max " + Math.max(...ws) + "×" + Math.max(...hs) + "). Clique une boîte pour la choisir.";
+  } else {
+    $("autoinfo").textContent = "Aucune pose détectée — vérifie que « Fond transparent » est coché et ajuste le seuil.";
+  }
+  selBox = -1;
+  render();
+}
+
+// découpe un tableau de "remplissage" en segments séparés par >= minGap zéros
+function segments(arr, minGap) {
+  const out = []; let start = -1, gap = 0;
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i] > 0) { if (start < 0) start = i; gap = 0; }
+    else if (start >= 0) { gap++; if (gap >= minGap) { out.push({ a: start, b: i - gap }); start = -1; gap = 0; } }
+  }
+  if (start >= 0) out.push({ a: start, b: arr.length - 1 });
+  return out;
+}
+
 function render() {
   buildNative();
   const cols = +$("cols").value, rows = +$("rows").value;
   const cw = off.width / cols, ch = off.height / rows;
   $("cellinfo").innerHTML = "Image " + off.width + "×" + off.height +
-    " — 1 cellule = <b>" + Math.round(cw) + " × " + Math.round(ch) + "</b> px";
+    " — grille manuelle : 1 cellule = <b>" + Math.round(cw) + " × " + Math.round(ch) + "</b> px";
   // affichage planche scalé à largeur ~900
   const disp = $("sheet-canvas");
   const scale = Math.min(1, 900 / off.width);
+  dispScale = scale;
   disp.width = Math.round(off.width * scale);
   disp.height = Math.round(off.height * scale);
   const x = disp.getContext("2d");
   x.clearRect(0, 0, disp.width, disp.height);
   x.drawImage(off, 0, 0, disp.width, disp.height);
-  // grille
-  x.strokeStyle = "rgba(60,230,90,.8)"; x.lineWidth = 1;
-  for (let i = 1; i < cols; i++) { const px = i * cw * scale; x.beginPath(); x.moveTo(px, 0); x.lineTo(px, disp.height); x.stroke(); }
-  for (let j = 1; j < rows; j++) { const py = j * ch * scale; x.beginPath(); x.moveTo(0, py); x.lineTo(disp.width, py); x.stroke(); }
-  // case sélectionnée
-  x.strokeStyle = "#ffd23f"; x.lineWidth = 3;
-  x.strokeRect(sel.col * cw * scale, sel.row * ch * scale, cw * scale, ch * scale);
+  // grille manuelle (en vert) seulement si pas de détection auto active
+  if (!boxes.length) {
+    x.strokeStyle = "rgba(60,230,90,.8)"; x.lineWidth = 1;
+    for (let i = 1; i < cols; i++) { const px = i * cw * scale; x.beginPath(); x.moveTo(px, 0); x.lineTo(px, disp.height); x.stroke(); }
+    for (let j = 1; j < rows; j++) { const py = j * ch * scale; x.beginPath(); x.moveTo(0, py); x.lineTo(disp.width, py); x.stroke(); }
+    x.strokeStyle = "#ffd23f"; x.lineWidth = 3;
+    x.strokeRect(sel.col * cw * scale, sel.row * ch * scale, cw * scale, ch * scale);
+  }
+  // boîtes auto-détectées (en cyan)
+  if (boxes.length && $("showboxes").checked) {
+    x.lineWidth = 1.5;
+    boxes.forEach((b, i) => {
+      x.strokeStyle = (i === selBox) ? "#ffd23f" : "rgba(46,196,182,.95)";
+      if (i === selBox) x.lineWidth = 3; else x.lineWidth = 1.5;
+      x.strokeRect(b.x * scale, b.y * scale, b.w * scale, b.h * scale);
+    });
+  }
   drawPreview();
   updateParams();
 }
 
-function drawPreview() {
+// renvoie la zone source actuellement choisie (boîte auto si une est sélectionnée, sinon cellule de grille)
+function currentRect() {
+  if (selBox >= 0 && boxes[selBox]) return boxes[selBox];
   const cols = +$("cols").value, rows = +$("rows").value;
   const cw = off.width / cols, ch = off.height / rows;
+  return { x: sel.col * cw, y: sel.row * ch, w: cw, h: ch };
+}
+
+function drawPreview() {
+  const r = currentRect();
   const p = $("preview"); const ctx = p.getContext("2d");
   ctx.clearRect(0, 0, p.width, p.height);
-  // adapte le ratio
-  const s = Math.min(p.width / cw, p.height / ch);
-  const dw = cw * s, dh = ch * s;
-  ctx.drawImage(off, sel.col * cw, sel.row * ch, cw, ch, (p.width - dw) / 2, (p.height - dh) / 2, dw, dh);
+  const s = Math.min(p.width / r.w, p.height / r.h);
+  const dw = r.w * s, dh = r.h * s;
+  ctx.drawImage(off, r.x, r.y, r.w, r.h, (p.width - dw) / 2, (p.height - dh) / 2, dw, dh);
 }
 
 function updateParams() {
-  const cols = +$("cols").value, rows = +$("rows").value;
-  const cw = Math.round(off.width / cols), ch = Math.round(off.height / rows);
-  $("params").value = JSON.stringify({ planche: $("sheet").value, cols, rows, cellW: cw, cellH: ch, colonne: sel.col, ligne: sel.row, seuil: +$("thr").value });
+  const r = currentRect();
+  const base = { planche: $("sheet").value, seuil: +$("thr").value };
+  if (selBox >= 0) $("params").value = JSON.stringify({ ...base, mode: "auto", x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h), poses_total: boxes.length });
+  else {
+    const cols = +$("cols").value, rows = +$("rows").value;
+    $("params").value = JSON.stringify({ ...base, mode: "grille", cols, rows, cellW: Math.round(off.width / cols), cellH: Math.round(off.height / rows), colonne: sel.col, ligne: sel.row });
+  }
 }
 
 $("sheet-canvas").addEventListener("click", (e) => {
   const disp = $("sheet-canvas"); const r = disp.getBoundingClientRect();
+  const px = (e.clientX - r.left) / r.width * disp.width / dispScale;  // -> coord natives
+  const py = (e.clientY - r.top) / r.height * disp.height / dispScale;
+  // priorité : clic dans une boîte auto-détectée
+  if (boxes.length) {
+    const hit = boxes.findIndex(b => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h);
+    if (hit >= 0) { selBox = hit; render(); return; }
+  }
+  // sinon, sélection de cellule de grille
   const cols = +$("cols").value, rows = +$("rows").value;
   const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
   sel.col = Math.min(cols - 1, Math.floor(fx * cols));
   sel.row = Math.min(rows - 1, Math.floor(fy * rows));
+  selBox = -1;
   render();
 });
 
 $("dl").addEventListener("click", () => {
-  const cols = +$("cols").value, rows = +$("rows").value;
-  const cw = Math.round(off.width / cols), ch = Math.round(off.height / rows);
+  const r = currentRect();
+  const cw = Math.round(r.w), ch = Math.round(r.h);
   const out = document.createElement("canvas"); out.width = cw; out.height = ch;
-  out.getContext("2d").drawImage(off, sel.col * (off.width / cols), sel.row * (off.height / rows), off.width / cols, off.height / rows, 0, 0, cw, ch);
+  out.getContext("2d").drawImage(off, r.x, r.y, r.w, r.h, 0, 0, cw, ch);
   const a = document.createElement("a");
   a.download = "hero-" + $("sheet").value + ".png";
   a.href = out.toDataURL("image/png");
@@ -164,8 +256,10 @@ $("dl").addEventListener("click", () => {
 
 $("copy").addEventListener("click", () => { $("params").select(); document.execCommand("copy"); $("copy").textContent = "✅ Copié !"; setTimeout(() => $("copy").textContent = "📋 Copier les paramètres", 1500); });
 
-["sheet"].forEach((id) => $(id).addEventListener("change", () => { sel = { col: 0, row: 0 }; load(); }));
-["cols", "rows", "key", "thr"].forEach((id) => $(id).addEventListener("input", () => { $("thrv").textContent = $("thr").value; render(); }));
+["sheet"].forEach((id) => $(id).addEventListener("change", () => { sel = { col: 0, row: 0 }; boxes = []; selBox = -1; load(); }));
+["cols", "rows", "key", "thr"].forEach((id) => $(id).addEventListener("input", () => { $("thrv").textContent = $("thr").value; if (id === "key" || id === "thr") { boxes = []; selBox = -1; } render(); }));
+$("auto").addEventListener("click", autoDetect);
+$("showboxes").addEventListener("change", render);
 
 load();
 </script>

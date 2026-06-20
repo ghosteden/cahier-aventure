@@ -36,6 +36,13 @@ CV.WORLDS = [
     intro: "Remonte le temps jusqu'au volcan des dinos !",
     map: "assets/map-dinosaure.png", sprite: "assets/sprite-dinosaure.png",
     grid: { cols: 6, rows: 4, col: 0, row: 0 },
+    anim: {
+      idle:  { strip: "assets/hero-dinosaure-idle.png",  frames: 6, dur: 0.9 },
+      walk:  { strip: "assets/hero-dinosaure-walk.png",  frames: 8, dur: 0.8 },
+      happy: { strip: "assets/hero-dinosaure-happy.png", frames: 4, dur: 0.6 },
+      sad:   { strip: "assets/hero-dinosaure-sad.png",   frames: 3, dur: 0.8 },
+      jump:  { strip: "assets/hero-dinosaure-jump.png",  frames: 4, dur: 0.7 }
+    },
     nodes: [[35.6, 47.9], [18, 55], [26, 68.2], [57.3, 76.6], [46.7, 43.6], [64.6, 25.8], [69.7, 43.2], [77.2, 55.7], [84.7, 32.4]]
   },
   {

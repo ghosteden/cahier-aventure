@@ -218,15 +218,51 @@ window.CV = window.CV || {};
   let mapDragged = false;      // pour distinguer clic / glissement
   let placeMode = false;       // outil de placement des pierres
   let placePoints = [];        // coordonnées relevées en mode placement
+  let lastHeroNode = {};       // { [worldIndex]: nodeIdx } pour détecter une avancée du héros
 
-  /* Jeton du héros : image hero-*.png si présente (fond transparent), sinon emoji. */
+  /* Jeton du héros :
+     - si le monde a une planche d'animation (w.anim) → sprite animé (idle/walk/happy/sad/jump) ;
+     - sinon image hero-*.png fixe si présente (fond transparent), sinon emoji. */
   function heroToken(w, size) {
     const wrap = h("div", { class: "hero-token", style: { width: size + "px", height: size + "px" } });
+    if (w.anim) {
+      const strip = h("div", { class: "hero-strip" });
+      const emo = h("div", { class: "hero-emo", style: { fontSize: Math.round(size * 0.82) + "px", display: "none" } }, w.emoji);
+      wrap.appendChild(strip); wrap.appendChild(emo);
+      // si une planche est introuvable, on retombe sur l'emoji
+      const probe = new Image();
+      probe.onerror = () => { strip.style.display = "none"; emo.style.display = "block"; };
+      probe.src = w.anim.idle.strip;
+      wrap._setMode = (mode, opts) => setHeroMode(wrap, strip, w, mode, opts || {});
+      wrap._setMode("idle");
+      setHeroFacing(wrap, true);   // par défaut le dino regarde à droite (vers l'avant du parcours)
+      return wrap;
+    }
     const img = h("img", { class: "hero-img", src: w.sprite.replace("sprite-", "hero-"), alt: "" });
     const emo = h("div", { class: "hero-emo", style: { fontSize: Math.round(size * 0.82) + "px", display: "none" } }, w.emoji);
     img.addEventListener("error", () => { img.style.display = "none"; emo.style.display = "block"; });
     wrap.appendChild(img); wrap.appendChild(emo);
     return wrap;
+  }
+
+  /* Applique une animation au sprite. opts.once = jouer une fois puis revenir à opts.then (def. idle). */
+  function setHeroMode(wrap, strip, w, mode, opts) {
+    const a = w.anim[mode] || w.anim.idle;
+    strip.style.width = (a.frames * 100) + "%";
+    strip.style.backgroundImage = "url(" + a.strip + ")";
+    strip.style.animation = "none";
+    void strip.offsetWidth;                       // redémarre l'animation proprement
+    const count = opts.once ? "1" : "infinite";
+    strip.style.animation = "spritestep " + a.dur + "s steps(" + a.frames + ") " + count;
+    clearTimeout(wrap._animT);
+    if (opts.once) {
+      wrap._animT = setTimeout(() => setHeroMode(wrap, strip, w, opts.then || "idle", {}), a.dur * 1000);
+    }
+  }
+
+  /* Oriente le sprite. Le dessin regarde à GAUCHE par défaut : faceRight=true => miroir horizontal. */
+  function setHeroFacing(tok, faceRight) {
+    tok.style.transform = faceRight ? "scaleX(-1)" : "scaleX(1)";
   }
 
   function updatePlacePanel() {
@@ -297,19 +333,31 @@ window.CV = window.CV || {};
 
     const wrap = h("div", { class: "carte-screen" });
     const top = h("div", { class: "carte-top" });
-    top.appendChild(UI.statusBar(state));
+    // Une seule barre d'info : statut (prénom/niveau/XP/⭐/🔥) + ligne du monde.
+    const li = CV.Game.levelInfo(state.xp);
+    const avatar = { espace: "🧑‍🚀", pirates: "🏴‍☠️", chevaliers: "🛡️", dinosaure: "🦖", ulysse: "🏛️" }[state.theme] || "🦖";
+    top.appendChild(h("div", { class: "carte-bar" },
+      h("div", { class: "cb-row1" },
+        h("div", { class: "status-avatar" }, avatar),
+        h("div", { class: "status-info" },
+          h("div", { class: "status-name" }, state.displayName + " · " + state.grade),
+          h("div", { class: "status-level" }, "Niv. " + li.level + " · " + li.into + "/" + li.need + " XP"),
+          h("div", { class: "xp-track" }, h("div", { class: "xp-fill", style: { width: li.pct + "%" } }))),
+        h("div", { class: "status-chips" },
+          h("div", { class: "chip gold" }, "⭐ " + (state.stars || 0)),
+          h("div", { class: "chip fire" }, "🔥 " + (state.streak.count || 0)))),
+      h("div", { class: "cb-row2" },
+        h("button", { class: "world-arrow", disabled: mapViewIndex <= 0 ? "" : null,
+          onclick: () => { if (mapViewIndex > 0) { mapViewIndex--; renderCarte(); } } }, "‹"),
+        h("div", { class: "map-title" },
+          h("div", { class: "wt-name" }, w.emoji + " " + w.name),
+          h("div", { class: "wt-sub" }, mapViewIndex < curWorldIndex ? "Monde terminé ✅" : "Monde " + (mapViewIndex + 1) + " / 5")),
+        h("button", { class: "world-arrow", style: placeMode ? { background: "var(--gold)", color: "#000" } : null,
+          title: "Placer les pierres", onclick: () => { placeMode = !placeMode; if (placeMode) placePoints = []; renderCarte(); } }, "📍"),
+        h("button", { class: "world-arrow", disabled: mapViewIndex >= curWorldIndex ? "" : null,
+          onclick: () => { if (mapViewIndex < curWorldIndex) { mapViewIndex++; renderCarte(); } } }, "›"))));
     const banner = installBanner();
     if (banner) top.appendChild(banner);
-    top.appendChild(h("div", { class: "map-header" },
-      h("button", { class: "world-arrow", disabled: mapViewIndex <= 0 ? "" : null,
-        onclick: () => { if (mapViewIndex > 0) { mapViewIndex--; renderCarte(); } } }, "‹"),
-      h("div", { class: "map-title" },
-        h("div", { class: "wt-name" }, w.emoji + " " + w.name),
-        h("div", { class: "wt-sub" }, mapViewIndex < curWorldIndex ? "Monde terminé ✅" : "Monde " + (mapViewIndex + 1) + " / 5")),
-      h("button", { class: "world-arrow", style: placeMode ? { background: "var(--gold)", color: "#000" } : null,
-        title: "Placer les pierres", onclick: () => { placeMode = !placeMode; if (placeMode) placePoints = []; renderCarte(); } }, "📍"),
-      h("button", { class: "world-arrow", disabled: mapViewIndex >= curWorldIndex ? "" : null,
-        onclick: () => { if (mapViewIndex < curWorldIndex) { mapViewIndex++; renderCarte(); } } }, "›")));
     wrap.appendChild(top);
 
     const viewport = h("div", { class: "map-viewport" });
@@ -360,15 +408,21 @@ window.CV = window.CV || {};
       const stars = done ? (dp.stars || 1) : 0;
       const isCurrent = level === curLevel;
       const locked = level > curLevel;
-      let kind = "open";
-      if (locked) kind = "locked";
-      else if (isBoss) kind = "boss";
-      else if (done) kind = stars <= 1 ? "cracked" : "done";
-      let cls = "stone " + (locked ? "locked" : "") + (isBoss ? " boss" : "") + (isCurrent ? " current" : "");
-      const stone = h("div", { class: cls, style: { left: n[0] + "%", top: n[1] + "%" } });
-      stone.appendChild(stoneSVG(kind));
-      stone.appendChild(h("div", { class: "stone-num" }, locked ? "🔒" : (isBoss ? "👑" : String(i + 1))));
-      if (done) stone.appendChild(h("div", { class: "stone-stars" }, "⭐".repeat(stars)));
+      // Planche stones.png : ligne = style de pierre (selon le monde), colonne = état.
+      // colonnes : 0 herbe(verrouillée) · 1 nue(dispo) · 2 fissurée · 3 ⭐ · 4 ⭐⭐ · 5 ⭐⭐⭐
+      const styleRow = (w.stoneStyle != null ? w.stoneStyle : (worldIndex % 3));
+      let col;
+      if (locked) col = 0;
+      else if (done) col = stars >= 1 ? Math.min(5, 2 + stars) : 2;
+      else col = 1;
+      const cls = "stone" + (locked ? " locked" : "") + (isBoss ? " boss" : "") + (isCurrent ? " current" : "");
+      const stone = h("div", { class: cls, style: {
+        left: n[0] + "%", top: n[1] + "%",
+        backgroundImage: "url(assets/stones.png)",
+        backgroundPosition: (col / 5 * 100) + "% " + (styleRow / 2 * 100) + "%"
+      } });
+      // numéro uniquement sur les pierres déverrouillées (👑 pour le boss)
+      if (!locked) stone.appendChild(h("div", { class: "stone-num" }, isBoss ? "👑" : String(i + 1)));
       stone.addEventListener("click", (e) => {
         e.stopPropagation();
         if (mapDragged) return;
@@ -380,8 +434,51 @@ window.CV = window.CV || {};
 
     // Personnage à la case courante (ou à la fin si monde terminé)
     const heroNode = w.nodes[curNodeIdx >= 0 ? curNodeIdx : 0];
-    const hero = h("div", { class: "hero-sprite", style: { left: heroNode[0] + "%", top: heroNode[1] + "%" } }, heroToken(w, 64));
+    const tok = heroToken(w, 64);
+    const hero = h("div", { class: "hero-sprite" + (w.anim ? " anim" : ""), style: { left: heroNode[0] + "%", top: heroNode[1] + "%" } }, tok);
     layer.appendChild(hero);
+
+    // ---- Caméra : translation de la map (centrée sur un nœud, avec pan animé possible) ----
+    const minTx = Math.min(0, vw - lw), minTy = Math.min(0, vh - lh);
+    let tx = 0, ty = 0;
+    const apply = () => { layer.style.transform = "translate(" + tx + "px," + ty + "px)"; };
+    const camFor = (node) => {
+      const cx = (node[0] / 100) * lw, cy = (node[1] / 100) * lh;
+      return [clamp(vw / 2 - cx, minTx, 0), clamp(vh / 2 - cy, minTy, 0)];
+    };
+    const setCam = (node, sec) => { [tx, ty] = camFor(node); layer.style.transition = sec ? ("transform " + sec + "s linear") : "none"; apply(); };
+
+    // Le héros vient-il d'avancer d'une pierre (niveau réussi) ?
+    const prev = lastHeroNode[worldIndex];
+    const advanced = tok._setMode && prev != null && prev >= 0 && curNodeIdx > prev && w.nodes[prev];
+    lastHeroNode[worldIndex] = curNodeIdx;
+    if (advanced) {
+      const from = w.nodes[prev], to = heroNode;
+      // 1) départ sur l'ANCIENNE pierre, caméra centrée dessus
+      hero.style.transition = "none";
+      hero.style.left = from[0] + "%"; hero.style.top = from[1] + "%";
+      setCam(from, 0);
+      void hero.offsetWidth;
+      // 2) animation de joie sur place
+      tok._setMode("happy", { once: true });
+      const happyMs = (w.anim.happy.dur || 0.6) * 1000;
+      // 3) après la joie : marche jusqu'à la nouvelle pierre ; la caméra suit
+      setTimeout(() => {
+        const goRight = to[0] > from[0];
+        setHeroFacing(tok, goRight);
+        tok._setMode("walk");
+        const dist = Math.hypot(to[0] - from[0], to[1] - from[1]);
+        const dur = Math.max(0.5, Math.min(2.2, dist * 0.07));
+        hero.style.transition = "left " + dur + "s linear, top " + dur + "s linear";
+        void hero.offsetWidth;
+        hero.style.left = to[0] + "%"; hero.style.top = to[1] + "%";
+        setCam(to, dur);                          // caméra synchronisée avec la marche
+        // 4) arrivé : il regarde de nouveau vers l'avant et repasse en idle
+        setTimeout(() => { setHeroFacing(tok, true); tok._setMode("idle"); }, dur * 1000);
+      }, happyMs);
+    } else {
+      setCam(heroNode, 0);
+    }
 
     // Outil de placement : marqueurs + relevé des coordonnées au double-clic
     if (placeMode) {
@@ -398,19 +495,13 @@ window.CV = window.CV || {};
       renderPlacePanel();
     }
 
-    // Position initiale : centrée sur le personnage
-    const minTx = Math.min(0, vw - lw), minTy = Math.min(0, vh - lh);
-    const cx = (heroNode[0] / 100) * lw, cy = (heroNode[1] / 100) * lh;
-    let tx = clamp(vw / 2 - cx, minTx, 0), ty = clamp(vh / 2 - cy, minTy, 0);
-    const apply = () => { layer.style.transform = "translate(" + tx + "px," + ty + "px)"; };
-    apply();
-
     // Glissement (drag) au doigt / souris.
     // IMPORTANT : on ne capture le pointeur QUE lorsqu'un vrai glissement
     // démarre, sinon un simple tap sur une pierre serait « avalé » par la carte.
     let dragging = false, captured = false, sx = 0, sy = 0, stx = 0, sty = 0;
     viewport.addEventListener("pointerdown", (e) => {
       dragging = true; captured = false; mapDragged = false;
+      layer.style.transition = "none";            // stoppe un éventuel pan caméra en cours
       sx = e.clientX; sy = e.clientY; stx = tx; sty = ty;
     });
     viewport.addEventListener("pointermove", (e) => {
@@ -556,7 +647,9 @@ window.CV = window.CV || {};
 
     let heroHP = 3, bossHP = cfg.hp, qi = 0;
     const w = CV.worldByIndex(CV.worldIndexOfLevel(lv.level));
-    const heroEl = h("div", { class: "fighter hero" }, heroToken(w, 84));
+    const heroTok = heroToken(w, 84);
+    const heroEl = h("div", { class: "fighter hero" }, heroTok);
+    const heroAnim = (mode, opts) => { if (heroTok._setMode) heroTok._setMode(mode, opts); };
     const bossEl = h("div", { class: "fighter boss" }, cfg.emoji);
     const heroHpEl = h("div", { class: "hp" });
     const bossHpEl = h("div", { class: "hp" });
@@ -587,8 +680,8 @@ window.CV = window.CV || {};
       CV.Engine.run(qbox, [ex], {
         compact: true,
         onComplete: ({ correct }) => {
-          if (correct) { bossHP--; heroEl.classList.add("attack-r"); bossEl.classList.add("hit"); fx("💥"); }
-          else { heroHP--; bossEl.classList.add("attack-l"); heroEl.classList.add("hit"); fx("💢"); }
+          if (correct) { bossHP--; heroEl.classList.add("attack-r"); bossEl.classList.add("hit"); fx("💥"); heroAnim("happy", { once: true }); }
+          else { heroHP--; bossEl.classList.add("attack-l"); heroEl.classList.add("hit"); fx("💢"); heroAnim("sad", { once: true }); }
           updateHP();
           setTimeout(() => { heroEl.className = "fighter hero"; bossEl.className = "fighter boss"; nextQ(); }, 850);
         }
@@ -597,9 +690,10 @@ window.CV = window.CV || {};
 
     function win() {
       const stars = Math.max(1, heroHP);
+      heroAnim("happy", { once: true });
       UI.confetti();
       UI.toast(cfg.name + " est vaincu ! 🎉");
-      finishLevel(lv, stars, cfg.hp, cfg.hp, false);
+      setTimeout(() => finishLevel(lv, stars, cfg.hp, cfg.hp, false), 700);
     }
 
     function lose() {
