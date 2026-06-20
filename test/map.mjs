@@ -10,7 +10,7 @@ const srv = http.createServer((req, res) => {
   fs.readFile(p, (e, d) => { if (e) { res.writeHead(404); res.end("nf"); return; }
     res.writeHead(200, { "Content-Type": TYPES[path.extname(p)] || "application/octet-stream" }); res.end(d); });
 });
-await new Promise((r) => srv.listen(8201, r));
+await new Promise((r) => srv.listen(8210, r));
 const errors = [];
 const browser = await chromium.launch();
 const page = await (await browser.newContext({ viewport: { width: 414, height: 820 } })).newPage();
@@ -18,7 +18,7 @@ page.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));
 page.on("console", (m) => { if (m.type() === "error" && !m.text().includes("404")) errors.push(m.text()); });
 const shot = (n) => page.screenshot({ path: path.join(SHOTS, n + ".png") });
 try {
-  await page.goto("http://localhost:8201/index.html", { waitUntil: "domcontentloaded" });
+  await page.goto("http://localhost:8210/index.html", { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#app:not([hidden])", { timeout: 8000 });
   await page.waitForTimeout(500);
   await shot("map-01-login");

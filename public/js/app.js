@@ -127,7 +127,13 @@ window.CV = window.CV || {};
       b.classList.toggle("active", b.getAttribute("data-go") === "#/" + tab));
   }
 
-  function screen() { appEl.innerHTML = ""; appEl.scrollTop = 0; window.scrollTo(0, 0); return appEl; }
+  function screen() {
+    appEl.innerHTML = "";
+    appEl.classList.remove("carte-mode");
+    document.querySelectorAll(".place-panel").forEach((e) => e.remove());
+    appEl.scrollTop = 0; window.scrollTo(0, 0);
+    return appEl;
+  }
 
   /* ---------- Écran de connexion ---------- */
   function renderLogin() {
@@ -186,6 +192,8 @@ window.CV = window.CV || {};
         UI.toast("Bienvenue " + s.displayName + " ! 🎉");
       } }, "C'est parti ! 🎮")
     );
+    const loginInstall = installBanner();
+    if (loginInstall) c.appendChild(loginInstall);
     c.appendChild(card);
 
     if (players.length) {
@@ -208,6 +216,35 @@ window.CV = window.CV || {};
   /* ---------- Carte d'aventure (map déplaçable) ---------- */
   let mapViewIndex = null;     // monde actuellement regardé
   let mapDragged = false;      // pour distinguer clic / glissement
+  let placeMode = false;       // outil de placement des pierres
+  let placePoints = [];        // coordonnées relevées en mode placement
+
+  /* Jeton du héros : image hero-*.png si présente (fond transparent), sinon emoji. */
+  function heroToken(w, size) {
+    const wrap = h("div", { class: "hero-token", style: { width: size + "px", height: size + "px" } });
+    const img = h("img", { class: "hero-img", src: w.sprite.replace("sprite-", "hero-"), alt: "" });
+    const emo = h("div", { class: "hero-emo", style: { fontSize: Math.round(size * 0.82) + "px", display: "none" } }, w.emoji);
+    img.addEventListener("error", () => { img.style.display = "none"; emo.style.display = "block"; });
+    wrap.appendChild(img); wrap.appendChild(emo);
+    return wrap;
+  }
+
+  function updatePlacePanel() {
+    const ta = document.getElementById("place-ta");
+    if (ta) ta.value = "[" + placePoints.map((p) => "[" + p[0] + ", " + p[1] + "]").join(", ") + "]";
+  }
+  function renderPlacePanel() {
+    document.querySelectorAll(".place-panel").forEach((e) => e.remove());
+    const panel = h("div", { class: "place-panel" },
+      h("div", {}, "📍 Double-clique sur la carte, dans l'ordre des 9 cases (la 9ᵉ = boss). Copie-moi cette ligne :"),
+      h("textarea", { id: "place-ta", readonly: "" }),
+      h("div", { class: "btn-row", style: { marginTop: "6px" } },
+        h("button", { class: "btn ghost small", onclick: () => { placePoints.pop(); renderCarte(); } }, "↩️ Annuler"),
+        h("button", { class: "btn ghost small", onclick: () => { placePoints = []; renderCarte(); } }, "🗑️ Effacer"),
+        h("button", { class: "btn small", onclick: () => { placeMode = false; renderCarte(); } }, "✅ Fini")));
+    document.body.appendChild(panel);
+    updatePlacePanel();
+  }
 
   function svgEl(str) { const d = document.createElement("div"); d.innerHTML = str.trim(); return d.firstChild; }
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -256,36 +293,41 @@ window.CV = window.CV || {};
     if (state.theme !== curTheme) { state.theme = curTheme; Store.save({ silent: true }); }
 
     const c = screen();
-    c.appendChild(UI.statusBar(state));
-    const banner = installBanner();
-    if (banner) c.appendChild(banner);
+    appEl.classList.add("carte-mode");
 
-    // En-tête monde + flèches
-    c.appendChild(h("div", { class: "map-header" },
+    const wrap = h("div", { class: "carte-screen" });
+    const top = h("div", { class: "carte-top" });
+    top.appendChild(UI.statusBar(state));
+    const banner = installBanner();
+    if (banner) top.appendChild(banner);
+    top.appendChild(h("div", { class: "map-header" },
       h("button", { class: "world-arrow", disabled: mapViewIndex <= 0 ? "" : null,
         onclick: () => { if (mapViewIndex > 0) { mapViewIndex--; renderCarte(); } } }, "‹"),
       h("div", { class: "map-title" },
         h("div", { class: "wt-name" }, w.emoji + " " + w.name),
         h("div", { class: "wt-sub" }, mapViewIndex < curWorldIndex ? "Monde terminé ✅" : "Monde " + (mapViewIndex + 1) + " / 5")),
+      h("button", { class: "world-arrow", style: placeMode ? { background: "var(--gold)", color: "#000" } : null,
+        title: "Placer les pierres", onclick: () => { placeMode = !placeMode; if (placeMode) placePoints = []; renderCarte(); } }, "📍"),
       h("button", { class: "world-arrow", disabled: mapViewIndex >= curWorldIndex ? "" : null,
         onclick: () => { if (mapViewIndex < curWorldIndex) { mapViewIndex++; renderCarte(); } } }, "›")));
+    wrap.appendChild(top);
 
     const viewport = h("div", { class: "map-viewport" });
     const layer = h("div", { class: "map-layer" });
-    const img = h("img", { class: "map-img", src: w.map, alt: w.name });
-    layer.appendChild(img);
+    layer.appendChild(h("img", { class: "map-img", src: w.map, alt: w.name }));
     viewport.appendChild(layer);
-    c.appendChild(viewport);
-    c.appendChild(h("div", { class: "map-hint" }, "Glisse la carte • touche une pierre pour jouer"));
+    wrap.appendChild(viewport);
+    c.appendChild(wrap);
 
     setupMap(viewport, layer, w, mapViewIndex, curLevel, curWorldIndex, state);
   }
 
   function setupMap(viewport, layer, w, worldIndex, curLevel, curWorldIndex, state) {
-    // Dimensionne la carte : hauteur = un peu plus que la fenêtre → on déplace.
-    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    // Carte agrandie (≈ ×2) pour plus de détail et de scroll.
+    const vw = viewport.clientWidth || Math.min(window.innerWidth, 720);
+    const vh = viewport.clientHeight || (window.innerHeight - 140);
     const ratio = 1408 / 768;
-    const zoom = 1.35;
+    const zoom = 2.2;
     const lh = Math.round(vh * zoom);
     const lw = Math.round(lh * ratio);
     layer.style.width = lw + "px";
@@ -293,11 +335,6 @@ window.CV = window.CV || {};
 
     const worldDone = worldIndex < curWorldIndex;
     const curNodeIdx = worldIndex === curWorldIndex ? CV.nodeIndexOfLevel(curLevel) : (worldDone ? 8 : -1);
-
-    // Chemin pointillé
-    const pts = w.nodes.map((n) => n[0] + "," + n[1]).join(" ");
-    layer.appendChild(svgEl('<svg class="map-path" viewBox="0 0 100 100" preserveAspectRatio="none">' +
-      '<polyline points="' + pts + '" fill="none" stroke="rgba(255,248,225,.55)" stroke-width="0.7" stroke-dasharray="1.6 1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'));
 
     // Brouillard de guerre (sauf monde entièrement terminé)
     if (!worldDone) {
@@ -343,8 +380,23 @@ window.CV = window.CV || {};
 
     // Personnage à la case courante (ou à la fin si monde terminé)
     const heroNode = w.nodes[curNodeIdx >= 0 ? curNodeIdx : 0];
-    const hero = h("div", { class: "hero-sprite", style: Object.assign(spriteStyle(w, 66), { left: heroNode[0] + "%", top: heroNode[1] + "%" }) });
+    const hero = h("div", { class: "hero-sprite", style: { left: heroNode[0] + "%", top: heroNode[1] + "%" } }, heroToken(w, 64));
     layer.appendChild(hero);
+
+    // Outil de placement : marqueurs + relevé des coordonnées au double-clic
+    if (placeMode) {
+      placePoints.forEach((p, i) => layer.appendChild(
+        h("div", { class: "place-marker", style: { left: p[0] + "%", top: p[1] + "%" } }, String(i + 1))));
+      viewport.addEventListener("dblclick", (e) => {
+        const r = layer.getBoundingClientRect();
+        const x = Math.round((e.clientX - r.left) / r.width * 1000) / 10;
+        const y = Math.round((e.clientY - r.top) / r.height * 1000) / 10;
+        placePoints.push([x, y]);
+        layer.appendChild(h("div", { class: "place-marker", style: { left: x + "%", top: y + "%" } }, String(placePoints.length)));
+        updatePlacePanel();
+      });
+      renderPlacePanel();
+    }
 
     // Position initiale : centrée sur le personnage
     const minTx = Math.min(0, vw - lw), minTy = Math.min(0, vh - lh);
@@ -504,7 +556,7 @@ window.CV = window.CV || {};
 
     let heroHP = 3, bossHP = cfg.hp, qi = 0;
     const w = CV.worldByIndex(CV.worldIndexOfLevel(lv.level));
-    const heroEl = h("div", { class: "fighter hero", style: spriteStyle(w, 84) });
+    const heroEl = h("div", { class: "fighter hero" }, heroToken(w, 84));
     const bossEl = h("div", { class: "fighter boss" }, cfg.emoji);
     const heroHpEl = h("div", { class: "hp" });
     const bossHpEl = h("div", { class: "hp" });
