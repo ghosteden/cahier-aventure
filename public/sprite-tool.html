@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Outil sprites — L'Aventure des Savoirs</title>
+<style>
+  body { font-family: "Trebuchet MS", system-ui, sans-serif; background:#15102e; color:#fff; margin:0; padding:16px; }
+  h1 { font-size:20px; } h2 { font-size:16px; margin:18px 0 6px; }
+  .row { display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+  label { font-size:14px; }
+  select, input[type=number] { padding:6px 8px; border-radius:8px; border:1px solid #555; background:#241a4d; color:#fff; }
+  input[type=range] { vertical-align:middle; }
+  button { padding:8px 14px; border:none; border-radius:10px; background:#7c5cff; color:#fff; font-weight:bold; cursor:pointer; }
+  button.alt { background:#2ec4b6; color:#063; }
+  .panel { background:#1e1640; border:1px solid #34295f; border-radius:12px; padding:12px; margin-top:12px; }
+  canvas { max-width:100%; image-rendering: pixelated; }
+  #sheetWrap { overflow:auto; border:1px solid #34295f; border-radius:8px; }
+  /* damier pour voir la transparence */
+  #preview { background-image:
+      linear-gradient(45deg,#444 25%,transparent 25%),linear-gradient(-45deg,#444 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#444 75%),linear-gradient(-45deg,transparent 75%,#444 75%);
+    background-size:20px 20px; background-position:0 0,0 10px,10px -10px,-10px 0; border-radius:10px; }
+  code { background:#0d0a1f; padding:2px 6px; border-radius:6px; color:#9effa0; }
+  .hint { color:#bbb; font-size:13px; line-height:1.5; }
+  #params { width:100%; font-family:monospace; font-size:13px; background:#0d0a1f; color:#9effa0; border:1px solid #34295f; border-radius:8px; padding:8px; }
+</style>
+</head>
+<body>
+  <h1>🎨 Outil de découpe des sprites</h1>
+  <p class="hint">Règle <b>Colonnes</b> et <b>Lignes</b> jusqu'à ce que la grille verte tombe pile sur chaque pose.
+  Active <b>Fond transparent</b> (ajuste le seuil si besoin). <b>Clique une case</b> = la pose idéale (ex. perso de face, immobile).
+  Puis <b>Télécharge</b> la pose (nomme-la <code>hero-…png</code> et mets-la dans <code>assets/</code>), ou copie-moi les paramètres.</p>
+
+  <div class="panel">
+    <div class="row">
+      <label>Planche :
+        <select id="sheet">
+          <option value="dinosaure">dinosaure</option>
+          <option value="ulysse">ulysse</option>
+          <option value="chevalier">chevalier</option>
+          <option value="pirate">pirate</option>
+          <option value="espace">espace</option>
+          <option value="fusée">fusée</option>
+        </select>
+      </label>
+      <label>Colonnes : <input type="number" id="cols" value="6" min="1" max="24" style="width:64px"></label>
+      <label>Lignes : <input type="number" id="rows" value="4" min="1" max="24" style="width:64px"></label>
+      <label><input type="checkbox" id="key" checked> Fond transparent</label>
+      <label>Seuil : <input type="range" id="thr" min="20" max="160" value="70"> <span id="thrv">70</span></label>
+    </div>
+    <p class="hint" id="cellinfo"></p>
+  </div>
+
+  <h2>Planche (clique une case)</h2>
+  <div id="sheetWrap"><canvas id="sheet-canvas"></canvas></div>
+
+  <h2>Pose choisie</h2>
+  <div class="row">
+    <canvas id="preview" width="200" height="200"></canvas>
+    <div>
+      <div class="row">
+        <button id="dl">⬇️ Télécharger cette pose</button>
+        <button class="alt" id="copy">📋 Copier les paramètres</button>
+      </div>
+      <p class="hint">Nom de fichier proposé : <code id="fname">hero-dinosaure.png</code></p>
+      <textarea id="params" rows="3" readonly></textarea>
+    </div>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const NAT_W = 1408, NAT_H = 768; // taille native des planches (sauf fusée)
+let img = new Image();
+let off = document.createElement("canvas");   // planche en résolution native (éventuellement détourée)
+let sel = { col: 0, row: 0 };
+
+function load() {
+  const key = $("sheet").value;
+  img = new Image();
+  img.onload = render;
+  img.onerror = () => { $("cellinfo").textContent = "Image introuvable : assets/sprite-" + key + ".png"; };
+  img.src = "assets/sprite-" + key + ".png";
+  $("fname").textContent = "hero-" + key + ".png";
+}
+
+function buildNative() {
+  off.width = img.naturalWidth; off.height = img.naturalHeight;
+  const c = off.getContext("2d");
+  c.clearRect(0, 0, off.width, off.height);
+  c.drawImage(img, 0, 0);
+  if ($("key").checked) {
+    const thr = +$("thr").value;
+    const d = c.getImageData(0, 0, off.width, off.height);
+    const a = d.data;
+    for (let i = 0; i < a.length; i += 4) {
+      if (a[i] + a[i + 1] + a[i + 2] < thr && Math.max(a[i], a[i + 1], a[i + 2]) < thr * 0.6) a[i + 3] = 0;
+    }
+    c.putImageData(d, 0, 0);
+  }
+}
+
+function render() {
+  buildNative();
+  const cols = +$("cols").value, rows = +$("rows").value;
+  const cw = off.width / cols, ch = off.height / rows;
+  $("cellinfo").innerHTML = "Image " + off.width + "×" + off.height +
+    " — 1 cellule = <b>" + Math.round(cw) + " × " + Math.round(ch) + "</b> px";
+  // affichage planche scalé à largeur ~900
+  const disp = $("sheet-canvas");
+  const scale = Math.min(1, 900 / off.width);
+  disp.width = Math.round(off.width * scale);
+  disp.height = Math.round(off.height * scale);
+  const x = disp.getContext("2d");
+  x.clearRect(0, 0, disp.width, disp.height);
+  x.drawImage(off, 0, 0, disp.width, disp.height);
+  // grille
+  x.strokeStyle = "rgba(60,230,90,.8)"; x.lineWidth = 1;
+  for (let i = 1; i < cols; i++) { const px = i * cw * scale; x.beginPath(); x.moveTo(px, 0); x.lineTo(px, disp.height); x.stroke(); }
+  for (let j = 1; j < rows; j++) { const py = j * ch * scale; x.beginPath(); x.moveTo(0, py); x.lineTo(disp.width, py); x.stroke(); }
+  // case sélectionnée
+  x.strokeStyle = "#ffd23f"; x.lineWidth = 3;
+  x.strokeRect(sel.col * cw * scale, sel.row * ch * scale, cw * scale, ch * scale);
+  drawPreview();
+  updateParams();
+}
+
+function drawPreview() {
+  const cols = +$("cols").value, rows = +$("rows").value;
+  const cw = off.width / cols, ch = off.height / rows;
+  const p = $("preview"); const ctx = p.getContext("2d");
+  ctx.clearRect(0, 0, p.width, p.height);
+  // adapte le ratio
+  const s = Math.min(p.width / cw, p.height / ch);
+  const dw = cw * s, dh = ch * s;
+  ctx.drawImage(off, sel.col * cw, sel.row * ch, cw, ch, (p.width - dw) / 2, (p.height - dh) / 2, dw, dh);
+}
+
+function updateParams() {
+  const cols = +$("cols").value, rows = +$("rows").value;
+  const cw = Math.round(off.width / cols), ch = Math.round(off.height / rows);
+  $("params").value = JSON.stringify({ planche: $("sheet").value, cols, rows, cellW: cw, cellH: ch, colonne: sel.col, ligne: sel.row, seuil: +$("thr").value });
+}
+
+$("sheet-canvas").addEventListener("click", (e) => {
+  const disp = $("sheet-canvas"); const r = disp.getBoundingClientRect();
+  const cols = +$("cols").value, rows = +$("rows").value;
+  const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+  sel.col = Math.min(cols - 1, Math.floor(fx * cols));
+  sel.row = Math.min(rows - 1, Math.floor(fy * rows));
+  render();
+});
+
+$("dl").addEventListener("click", () => {
+  const cols = +$("cols").value, rows = +$("rows").value;
+  const cw = Math.round(off.width / cols), ch = Math.round(off.height / rows);
+  const out = document.createElement("canvas"); out.width = cw; out.height = ch;
+  out.getContext("2d").drawImage(off, sel.col * (off.width / cols), sel.row * (off.height / rows), off.width / cols, off.height / rows, 0, 0, cw, ch);
+  const a = document.createElement("a");
+  a.download = "hero-" + $("sheet").value + ".png";
+  a.href = out.toDataURL("image/png");
+  a.click();
+});
+
+$("copy").addEventListener("click", () => { $("params").select(); document.execCommand("copy"); $("copy").textContent = "✅ Copié !"; setTimeout(() => $("copy").textContent = "📋 Copier les paramètres", 1500); });
+
+["sheet"].forEach((id) => $(id).addEventListener("change", () => { sel = { col: 0, row: 0 }; load(); }));
+["cols", "rows", "key", "thr"].forEach((id) => $(id).addEventListener("input", () => { $("thrv").textContent = $("thr").value; render(); }));
+
+load();
+</script>
+</body>
+</html>

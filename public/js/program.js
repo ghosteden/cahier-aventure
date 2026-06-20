@@ -36,7 +36,7 @@ CV.WORLDS = [
     intro: "Remonte le temps jusqu'au volcan des dinos !",
     map: "assets/map-dinosaure.png", sprite: "assets/sprite-dinosaure.png",
     grid: { cols: 6, rows: 4, col: 0, row: 0 },
-    nodes: [[12, 52], [19, 72], [29, 60], [34, 40], [43, 72], [51, 55], [62, 46], [72, 57], [85, 30]]
+    nodes: [[35.6, 47.9], [18, 55], [26, 68.2], [57.3, 76.6], [46.7, 43.6], [64.6, 25.8], [69.7, 43.2], [77.2, 55.7], [84.7, 32.4]]
   },
   {
     key: "ulysse", theme: "ulysse", emoji: "🏛️",
