@@ -33,6 +33,53 @@ CV.Engine = (function () {
       .normalize("NFC").replace(/\s+/g, " ").replace(/[.!?;:]+$/, "");
   }
 
+  /* Pad d'écriture manuscrite réutilisable (texte ou nombres).
+     onText(text) est appelé quand l'enfant convertit son écriture. */
+  function handwritingPad(numeric, onText) {
+    const wrap = h("div", { class: "hw-pad", style: { marginTop: "10px" } });
+    const canvas = h("canvas", { class: "hw-canvas", style: { height: "150px" } });
+    const tools = h("div", { class: "hw-tools" },
+      h("button", { class: "btn good small", type: "button", onclick: () => convert() }, "✅ Convertir"),
+      h("button", { class: "btn ghost small", type: "button", onclick: () => undo() }, "↩️"),
+      h("button", { class: "btn ghost small", type: "button", onclick: () => clearC() }, "🧽 Effacer"));
+    wrap.appendChild(canvas); wrap.appendChild(tools);
+
+    let strokes = [], cur = null, drawing = false, cx = null;
+    function init() {
+      const dpr = window.devicePixelRatio || 1; const r = canvas.getBoundingClientRect();
+      if (!r.width) return;
+      canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
+      cx = canvas.getContext("2d"); cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cx.lineWidth = 3; cx.lineCap = "round"; cx.lineJoin = "round"; cx.strokeStyle = "#1c1340"; redraw();
+    }
+    function pos(e) { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+    function redraw() { if (!cx) return; cx.clearRect(0, 0, canvas.width, canvas.height); strokes.forEach((s) => { cx.beginPath(); s.forEach((p, i) => i ? cx.lineTo(p.x, p.y) : cx.moveTo(p.x, p.y)); cx.stroke(); }); }
+    function clearC() { strokes = []; redraw(); }
+    function undo() { strokes.pop(); redraw(); }
+    canvas.addEventListener("pointerdown", (e) => { if (!cx) init(); drawing = true; cur = []; strokes.push(cur); const p = pos(e); cur.push({ x: p.x, y: p.y, t: Date.now() }); try { canvas.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); });
+    canvas.addEventListener("pointermove", (e) => { if (!drawing || !cx) return; const p = pos(e); const last = cur[cur.length - 1]; cur.push({ x: p.x, y: p.y, t: Date.now() }); cx.beginPath(); if (last) cx.moveTo(last.x, last.y); cx.lineTo(p.x, p.y); cx.stroke(); e.preventDefault(); });
+    const endDraw = () => { drawing = false; };
+    canvas.addEventListener("pointerup", endDraw); canvas.addEventListener("pointercancel", endDraw); canvas.addEventListener("pointerleave", endDraw);
+    setTimeout(init, 60); window.addEventListener("resize", init);
+
+    async function convert() {
+      if (!strokes.length) { CV.UI.toast("Écris d'abord quelque chose ✍️"); return; }
+      if (!navigator.createHandwritingRecognizer) { CV.UI.toast("La reconnaissance n'est pas dispo sur cet appareil — écris au clavier 🙂"); return; }
+      try {
+        const rec = await navigator.createHandwritingRecognizer({ languages: ["fr"] });
+        const draw = rec.startDrawing({ languages: ["fr"] });
+        strokes.forEach((s) => draw.addStroke({ points: s.map((p) => ({ x: p.x, y: p.y, t: p.t })) }));
+        const pred = await draw.getPrediction();
+        if (rec.finish) try { rec.finish(); } catch (_) {}
+        let text = pred && pred.length ? (pred[0].text || "") : "";
+        if (numeric) text = text.replace(/[^0-9,.\-]/g, "");
+        if (text) { onText(text); clearC(); CV.UI.toast("Ajouté ✅"); }
+        else CV.UI.toast("Je n'ai pas réussi à lire 😅 réessaie ou écris au clavier");
+      } catch (e) { CV.UI.toast("Reconnaissance indisponible — écris au clavier 🙂"); }
+    }
+    return wrap;
+  }
+
   function run(container, exercises, opts) {
     opts = opts || {};
     // 1) On "déplie" les dictées en une étape par phrase.
@@ -140,6 +187,26 @@ CV.Engine = (function () {
         placeholder: numeric ? "Ta réponse (nombre)" : "Écris ta réponse"
       });
       body.appendChild(input);
+
+      // Saisie tactile (écriture au stylet/doigt), repliée par défaut.
+      const padHost = h("div");
+      let padOpen = false;
+      const toggle = h("button", { class: "btn ghost small mt", type: "button", onclick: () => {
+        if (body._validated) return;
+        padOpen = !padOpen;
+        padHost.innerHTML = "";
+        if (padOpen) {
+          padHost.appendChild(handwritingPad(numeric, (t) => {
+            input.value = numeric ? t : ((input.value ? input.value.replace(/\s+$/, "") + " " : "") + t);
+          }));
+          toggle.textContent = "⌨️ Cacher l'écriture";
+        } else {
+          toggle.textContent = "✍️ Écrire à la main";
+        }
+      } }, "✍️ Écrire à la main");
+      body.appendChild(toggle);
+      body.appendChild(padHost);
+
       const validate = () => {
         if (body._validated) return;
         const val = input.value;
@@ -152,6 +219,7 @@ CV.Engine = (function () {
         }
         body._validated = true;
         input.disabled = true;
+        toggle.disabled = true;
         input.style.borderColor = good ? "var(--good)" : "var(--bad)";
         const corr = Array.isArray(step.answer) ? step.answer[0] : step.answer;
         showFeedback(good, (step.explain || "") + (good ? "" : "  → Réponse : " + corr));
