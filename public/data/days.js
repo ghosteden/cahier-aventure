@@ -6,9 +6,9 @@
    ========================================================= */
 window.CV = window.CV || {};
 
-/* Nombre de phrases de dictée selon l'avancement (1 au début → 6 à la fin). */
+/* Dictée : toujours UNE phrase courte, quel que soit le niveau. */
 CV.dicteeCountFor = function (level) {
-  return Math.min(6, 1 + Math.floor((level - 1) / 8));
+  return 1;
 };
 
 /* Programme détaillé du MONDE 1 (8 journées de leçons).

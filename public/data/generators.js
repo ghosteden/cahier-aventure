@@ -304,11 +304,15 @@ window.CV = window.CV || {};
     "Les nuages gris annoncent un orage violent."
   ];
 
-  /* Construit un exercice de dictée avec n phrases tirées au hasard. */
+  /* Dictées COURTES uniquement : on ne garde que les phrases de 4 à 9 mots. */
+  CV.DICTEE_WORDS = { min: 4, max: 9 };
+  function wordCount(s) { return s.replace(/[.,!?;:«»]/g, "").split(/\s+/).filter(Boolean).length; }
   CV.drawDictee = function (n) {
     n = Math.max(1, n || 1);
-    const idx = shuffleArr(CV.DICTEES.map((_, i) => i)).slice(0, n);
-    return { type: "dictee", q: "Écris la phrase que tu entends.", sentences: idx.map((i) => CV.DICTEES[i]) };
+    const pool = CV.DICTEES.filter((s) => { const w = wordCount(s); return w >= CV.DICTEE_WORDS.min && w <= CV.DICTEE_WORDS.max; });
+    const src = pool.length >= n ? pool : CV.DICTEES;
+    const idx = shuffleArr(src.map((_, i) => i)).slice(0, n);
+    return { type: "dictee", q: "Écris la phrase que tu entends.", sentences: idx.map((i) => src[i]) };
   };
 
   /* ---- Jeux de logique (drag-and-drop : ranger/ordonner) ---- */
