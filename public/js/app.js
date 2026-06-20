@@ -455,7 +455,8 @@ window.CV = window.CV || {};
     c.appendChild(h("h2", { class: "section-title" }, mod.icon + " " + mod.title));
     const box = h("div", { class: "card" });
     c.appendChild(box);
-    CV.Engine.run(box, mod.exercises, {
+    const exercises = CV.exercisesFor ? CV.exercisesFor(mod) : mod.exercises;
+    CV.Engine.run(box, exercises, {
       onComplete: ({ correct, total }) => {
         const res = Game.awardModule(Store.current(), mod, correct, total);
         Store.save();

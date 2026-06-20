@@ -3,13 +3,13 @@ import { chromium } from "playwright";
 const ROOT=path.resolve("public"); const SHOTS=path.resolve("test/shots"); fs.mkdirSync(SHOTS,{recursive:true});
 const T={ ".html":"text/html",".css":"text/css",".js":"text/javascript",".svg":"image/svg+xml",".png":"image/png",".webmanifest":"application/manifest+json" };
 const srv=http.createServer((req,res)=>{ let p=path.join(ROOT,decodeURIComponent(req.url.split("?")[0])); if(req.url==="/")p=path.join(ROOT,"index.html"); if(req.url.includes("/.netlify/")){res.writeHead(404);res.end();return;} fs.readFile(p,(e,d)=>{ if(e){res.writeHead(404);res.end();return;} res.writeHead(200,{"Content-Type":T[path.extname(p)]||"application/octet-stream"});res.end(d);});});
-await new Promise(r=>srv.listen(8204,r));
+await new Promise(r=>srv.listen(8205,r));
 const errors=[]; const b=await chromium.launch();
 const page=await (await b.newContext({viewport:{width:414,height:820}})).newPage();
 page.on("pageerror",e=>errors.push("PAGEERROR: "+e.message));
 page.on("console",m=>{ if(m.type()==="error"&&!m.text().includes("404")) errors.push(m.text()); });
 try{
-  await page.goto("http://localhost:8204/index.html",{waitUntil:"domcontentloaded"});
+  await page.goto("http://localhost:8205/index.html",{waitUntil:"domcontentloaded"});
   await page.waitForSelector("#app:not([hidden])");
   await page.addStyleTag({content:"*{animation:none!important;transition:none!important}"});
   await page.fill("#login-name","Gabi");

@@ -136,15 +136,16 @@ CV.buildBossExercises = function (levelObj, count) {
   const out = [];
   const sources = (levelObj.sourceModules || []).map((id) => CV.getModule(id)).filter(Boolean);
   if (!sources.length) return out;
-  let i = 0;
-  while (out.length < count && i < count * Math.max(1, sources.length)) {
-    const mod = sources[i % sources.length];
-    const exs = (mod.exercises || []).filter((e) => e.type !== "dictee");
-    if (exs.length) {
-      const ex = exs[Math.floor(i / sources.length) % exs.length];
-      if (!out.some((o) => o.q === ex.q)) out.push(Object.assign({ _from: mod.title }, ex));
-    }
-    i++;
-  }
-  return out.slice(0, count);
+  // Pour chaque module du monde, on génère un petit lot de questions (variété).
+  let bank = [];
+  sources.forEach((mod) => {
+    const exs = (CV.exercisesFor ? CV.exercisesFor(mod) : (mod.exercises || []))
+      .filter((e) => e.type !== "dictee");
+    exs.slice(0, 3).forEach((e) => bank.push(Object.assign({ _from: mod.title }, e)));
+  });
+  // mélange
+  for (let k = bank.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [bank[k], bank[j]] = [bank[j], bank[k]]; }
+  const seen = {};
+  for (const e of bank) { if (out.length >= count) break; if (!seen[e.q]) { seen[e.q] = 1; out.push(e); } }
+  return out;
 };

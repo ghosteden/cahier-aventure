@@ -1,6 +1,6 @@
 /* Service Worker — met l'appli en cache pour qu'elle fonctionne hors-ligne.
    Pense à incrémenter CACHE_VERSION quand tu modifies des fichiers. */
-const CACHE_VERSION = "aventure-ce2-v6";
+const CACHE_VERSION = "aventure-ce2-v7";
 const ASSETS = [
   "./",
   "./index.html",
@@ -11,6 +11,7 @@ const ASSETS = [
   "./data/content-maths.js",
   "./data/content-sciences.js",
   "./data/content-culture.js",
+  "./data/generators.js",
   "./js/program.js",
   "./js/store.js",
   "./js/sync.js",
