@@ -1,6 +1,6 @@
 /* Service Worker — met l'appli en cache pour qu'elle fonctionne hors-ligne.
    Pense à incrémenter CACHE_VERSION quand tu modifies des fichiers. */
-const CACHE_VERSION = "aventure-ce2-v12";
+const CACHE_VERSION = "aventure-ce2-v14";
 const ASSETS = [
   "./",
   "./index.html",
@@ -36,6 +36,11 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
+  // En local (dev), on laisse passer le réseau directement : pas de cache,
+  // un simple rafraîchissement montre toujours la dernière version.
+  if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+    return; // comportement réseau par défaut du navigateur
+  }
   // Ne jamais mettre en cache les appels de synchronisation cloud.
   if (url.pathname.includes("/.netlify/functions/")) {
     e.respondWith(fetch(e.request).catch(() => new Response("{\"offline\":true}", { headers: { "Content-Type": "application/json" } })));

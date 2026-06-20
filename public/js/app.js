@@ -269,16 +269,45 @@ window.CV = window.CV || {};
     const ta = document.getElementById("place-ta");
     if (ta) ta.value = "[" + placePoints.map((p) => "[" + p[0] + ", " + p[1] + "]").join(", ") + "]";
   }
+  function makeDraggable(el, handle) {
+    let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    handle.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      const r = el.getBoundingClientRect();
+      el.style.left = r.left + "px"; el.style.top = r.top + "px";
+      el.style.right = "auto"; el.style.bottom = "auto";
+      sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+    });
+    handle.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      let nx = ox + (e.clientX - sx), ny = oy + (e.clientY - sy);
+      nx = Math.max(0, Math.min(window.innerWidth - 60, nx));
+      ny = Math.max(0, Math.min(window.innerHeight - 40, ny));
+      el.style.left = nx + "px"; el.style.top = ny + "px";
+    });
+    const end = () => { dragging = false; };
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  }
+
   function renderPlacePanel() {
     document.querySelectorAll(".place-panel").forEach((e) => e.remove());
+    const handle = h("div", { class: "pp-handle" },
+      h("span", {}, "⠿ Déplace ce panneau"),
+      h("span", { class: "pp-mini", onclick: (e) => { e.stopPropagation(); document.querySelector(".place-panel").classList.toggle("mini"); } }, "▽"));
     const panel = h("div", { class: "place-panel" },
-      h("div", {}, "📍 Double-clique sur la carte, dans l'ordre des 9 cases (la 9ᵉ = boss). Copie-moi cette ligne :"),
-      h("textarea", { id: "place-ta", readonly: "" }),
-      h("div", { class: "btn-row", style: { marginTop: "6px" } },
-        h("button", { class: "btn ghost small", onclick: () => { placePoints.pop(); renderCarte(); } }, "↩️ Annuler"),
-        h("button", { class: "btn ghost small", onclick: () => { placePoints = []; renderCarte(); } }, "🗑️ Effacer"),
-        h("button", { class: "btn small", onclick: () => { placeMode = false; renderCarte(); } }, "✅ Fini")));
+      handle,
+      h("div", { class: "pp-body" },
+        h("div", {}, "📍 Double-clique sur la carte, dans l'ordre des 9 cases (la 9ᵉ = boss). Copie-moi cette ligne :"),
+        h("textarea", { id: "place-ta", readonly: "" }),
+        h("div", { class: "btn-row", style: { marginTop: "6px" } },
+          h("button", { class: "btn ghost small", onclick: () => { placePoints.pop(); renderCarte(); } }, "↩️ Annuler"),
+          h("button", { class: "btn ghost small", onclick: () => { placePoints = []; renderCarte(); } }, "🗑️ Effacer"),
+          h("button", { class: "btn small", onclick: () => { placeMode = false; renderCarte(); } }, "✅ Fini"))));
     document.body.appendChild(panel);
+    makeDraggable(panel, handle);
     updatePlacePanel();
   }
 
@@ -333,29 +362,22 @@ window.CV = window.CV || {};
 
     const wrap = h("div", { class: "carte-screen" });
     const top = h("div", { class: "carte-top" });
-    // Une seule barre d'info : statut (prénom/niveau/XP/⭐/🔥) + ligne du monde.
-    const li = CV.Game.levelInfo(state.xp);
+    // Une seule barre, tout sur une ligne : avatar + prénom, navigation du monde, ⭐, 🔥.
     const avatar = { espace: "🧑‍🚀", pirates: "🏴‍☠️", chevaliers: "🛡️", dinosaure: "🦖", ulysse: "🏛️" }[state.theme] || "🦖";
-    top.appendChild(h("div", { class: "carte-bar" },
-      h("div", { class: "cb-row1" },
-        h("div", { class: "status-avatar" }, avatar),
-        h("div", { class: "status-info" },
-          h("div", { class: "status-name" }, state.displayName + " · " + state.grade),
-          h("div", { class: "status-level" }, "Niv. " + li.level + " · " + li.into + "/" + li.need + " XP"),
-          h("div", { class: "xp-track" }, h("div", { class: "xp-fill", style: { width: li.pct + "%" } }))),
-        h("div", { class: "status-chips" },
-          h("div", { class: "chip gold" }, "⭐ " + (state.stars || 0)),
-          h("div", { class: "chip fire" }, "🔥 " + (state.streak.count || 0)))),
-      h("div", { class: "cb-row2" },
-        h("button", { class: "world-arrow", disabled: mapViewIndex <= 0 ? "" : null,
-          onclick: () => { if (mapViewIndex > 0) { mapViewIndex--; renderCarte(); } } }, "‹"),
-        h("div", { class: "map-title" },
-          h("div", { class: "wt-name" }, w.emoji + " " + w.name),
-          h("div", { class: "wt-sub" }, mapViewIndex < curWorldIndex ? "Monde terminé ✅" : "Monde " + (mapViewIndex + 1) + " / 5")),
-        h("button", { class: "world-arrow", style: placeMode ? { background: "var(--gold)", color: "#000" } : null,
-          title: "Placer les pierres", onclick: () => { placeMode = !placeMode; if (placeMode) placePoints = []; renderCarte(); } }, "📍"),
-        h("button", { class: "world-arrow", disabled: mapViewIndex >= curWorldIndex ? "" : null,
-          onclick: () => { if (mapViewIndex < curWorldIndex) { mapViewIndex++; renderCarte(); } } }, "›"))));
+    top.appendChild(h("div", { class: "carte-bar one" },
+      h("div", { class: "cb-avatar" }, avatar),
+      h("div", { class: "cb-name" }, state.displayName),
+      h("button", { class: "world-arrow", disabled: mapViewIndex <= 0 ? "" : null,
+        onclick: () => { if (mapViewIndex > 0) { mapViewIndex--; renderCarte(); } } }, "‹"),
+      h("div", { class: "cb-world" },
+        h("span", { class: "cb-wname" }, w.name),
+        h("span", { class: "cb-wsub" }, mapViewIndex < curWorldIndex ? "✅" : (mapViewIndex + 1) + "/5")),
+      h("button", { class: "world-arrow", disabled: mapViewIndex >= curWorldIndex ? "" : null,
+        onclick: () => { if (mapViewIndex < curWorldIndex) { mapViewIndex++; renderCarte(); } } }, "›"),
+      h("button", { class: "world-arrow", style: placeMode ? { background: "var(--gold)", color: "#000" } : null,
+        title: "Placer les pierres", onclick: () => { placeMode = !placeMode; if (placeMode) placePoints = []; renderCarte(); } }, "📍"),
+      h("div", { class: "chip gold" }, "⭐" + (state.stars || 0)),
+      h("div", { class: "chip fire" }, "🔥" + (state.streak.count || 0))));
     const banner = installBanner();
     if (banner) top.appendChild(banner);
     wrap.appendChild(top);
