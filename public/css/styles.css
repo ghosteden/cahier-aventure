@@ -26,6 +26,8 @@
 body[data-theme="espace"]    { --bg1:#1b1140; --bg2:#2d1b69; --accent:#7c5cff; --accent2:#00d4ff; }
 body[data-theme="pirates"]   { --bg1:#06303a; --bg2:#0a4f5c; --accent:#ff9f1c; --accent2:#2ec4b6; }
 body[data-theme="chevaliers"]{ --bg1:#2a1410; --bg2:#5c2c1d; --accent:#e63946; --accent2:#f4a261; }
+body[data-theme="dinosaure"] { --bg1:#14331a; --bg2:#2c5530; --accent:#e07a1f; --accent2:#7bc043; }
+body[data-theme="ulysse"]    { --bg1:#0d2b4a; --bg2:#1b4f7a; --accent:#e6a817; --accent2:#48b1c4; }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -321,3 +323,99 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 @media (min-width: 560px) {
   .daygrid { grid-template-columns: repeat(auto-fill, minmax(72px,1fr)); }
 }
+
+/* =========================================================
+   CARTE D'AVENTURE (map déplaçable, pierres, brouillard)
+   ========================================================= */
+.map-header {
+  display:flex; align-items:center; gap:10px; margin-bottom:10px;
+}
+.map-header .world-arrow {
+  background: rgba(0,0,0,.3); border:none; color:#fff; font-size:20px;
+  width:38px; height:38px; border-radius:50%; cursor:pointer; flex:none;
+}
+.map-header .world-arrow:disabled { opacity:.25; cursor:default; }
+.map-title { flex:1; min-width:0; }
+.map-title .wt-name { font-weight:bold; font-size:17px; line-height:1.1; }
+.map-title .wt-sub { font-size:12px; color: var(--muted); }
+
+/* Fenêtre de la carte : on voit une partie, on déplace au doigt */
+.map-viewport {
+  position: relative; width:100%; height: 62vh; max-height: 560px;
+  overflow: hidden; border-radius: 18px; border:2px solid rgba(255,255,255,.18);
+  box-shadow: var(--shadow); background:#0b0b13; touch-action: none; cursor: grab;
+}
+.map-viewport.dragging { cursor: grabbing; }
+.map-layer {
+  position:absolute; top:0; left:0; transform-origin: 0 0;
+  will-change: transform; user-select:none;
+}
+.map-img { display:block; width:100%; height:100%; pointer-events:none; -webkit-user-drag:none; }
+
+/* Chemin pointillé reliant les pierres */
+.map-path { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+
+/* Brouillard de guerre (par-dessus la map, sous les pierres) */
+.map-fog { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+
+/* Les pierres-cases */
+.stone {
+  position:absolute; transform: translate(-50%, -50%);
+  width: 58px; height: 58px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  filter: drop-shadow(0 4px 4px rgba(0,0,0,.5));
+}
+.stone .stone-svg { position:absolute; inset:0; width:100%; height:100%; }
+.stone .stone-num { position:relative; font-weight:bold; font-size:20px; color:#fff8e1; text-shadow:0 1px 2px #000; }
+.stone .stone-stars {
+  position:absolute; bottom:-12px; left:50%; transform:translateX(-50%);
+  font-size:13px; white-space:nowrap; text-shadow:0 1px 2px #000;
+}
+.stone.locked { cursor: default; }
+.stone.current { animation: stonebob 1.4s ease-in-out infinite; }
+@keyframes stonebob { 0%,100%{ transform:translate(-50%,-50%) } 50%{ transform:translate(-50%,-62%) } }
+.stone.boss { width: 74px; height: 74px; }
+.stone.boss .stone-num { font-size: 30px; }
+
+/* Le personnage (sprite) */
+.hero-sprite {
+  position:absolute; transform: translate(-50%, -88%);
+  width: 64px; height: 64px; pointer-events:none; z-index:5;
+  background-repeat: no-repeat;
+  filter: drop-shadow(0 6px 5px rgba(0,0,0,.55));
+  transition: left .6s ease, top .6s ease;
+  animation: herobob 1.2s ease-in-out infinite;
+}
+.stone.boss + .hero-sprite { }
+@keyframes herobob { 0%,100%{ margin-top:0 } 50%{ margin-top:-5px } }
+
+/* Bandeau d'aide en bas de carte */
+.map-hint { text-align:center; font-size:12px; color: var(--muted); margin-top:8px; }
+
+/* Petit panneau d'info de case (au tap) */
+.node-sheet {
+  position: fixed; left:0; right:0; bottom:0; z-index: 35;
+  background: var(--card-solid); color: var(--ink);
+  border-radius: 22px 22px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+  box-shadow: 0 -10px 30px rgba(0,0,0,.4); animation: sheetUp .25s ease;
+  max-width: 720px; margin: 0 auto;
+}
+@keyframes sheetUp { from{ transform: translateY(100%) } to{ transform: translateY(0) } }
+.node-sheet .ns-head { display:flex; align-items:center; gap:12px; }
+.node-sheet .ns-emoji { font-size:34px; }
+.sheet-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:34; animation: pop .2s; }
+
+/* Bouton de test "Débloquer" */
+.btn.debug { background:#444; color:#fff; font-size:13px; opacity:.85; }
+
+/* Transition entre mondes */
+.world-transition { text-align:center; padding: 30px 10px; }
+.world-transition img { width: 130px; height:130px; object-fit:none; }
+
+/* Login plus chaleureux : fond illustré */
+.login-bg {
+  position: fixed; inset:0; z-index:-1;
+  background-size: cover; background-position:center;
+  filter: brightness(.45) saturate(1.1);
+}
+.login-bg::after { content:""; position:absolute; inset:0; background:linear-gradient(180deg, rgba(20,12,40,.3), rgba(20,12,40,.85)); }

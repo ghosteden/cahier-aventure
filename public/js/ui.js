@@ -19,7 +19,7 @@ CV.UI = (function () {
   function applyTheme(theme) {
     document.body.setAttribute("data-theme", theme || "espace");
     const meta = document.querySelector('meta[name="theme-color"]');
-    const colors = { espace: "#1b1140", pirates: "#06303a", chevaliers: "#2a1410" };
+    const colors = { espace: "#1b1140", pirates: "#06303a", chevaliers: "#2a1410", dinosaure: "#14331a", ulysse: "#0d2b4a" };
     if (meta) meta.setAttribute("content", colors[theme] || "#1b1140");
   }
 
@@ -31,7 +31,7 @@ CV.UI = (function () {
 
   function statusBar(state) {
     const li = CV.Game.levelInfo(state.xp);
-    const avatar = { espace: "🧑‍🚀", pirates: "🏴‍☠️", chevaliers: "🛡️" }[state.theme] || "🧑‍🚀";
+    const avatar = { espace: "🧑‍🚀", pirates: "🏴‍☠️", chevaliers: "🛡️", dinosaure: "🦖", ulysse: "🏛️" }[state.theme] || "🦖";
     return h("div", { class: "status-bar" },
       h("div", { class: "status-avatar" }, avatar),
       h("div", { class: "status-info" },

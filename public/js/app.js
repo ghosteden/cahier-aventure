@@ -117,10 +117,6 @@ window.CV = window.CV || {};
     setActiveNav(tab);
 
     if (tab === "carte") return renderCarte();
-    if (tab === "jour") {
-      const n = parseInt(hash.split("/")[2], 10) || state.currentDay || 1;
-      return renderDay(n);
-    }
     if (tab === "recompenses") return renderRewards();
     if (tab === "profil") return renderProfil();
     return renderCarte();
@@ -135,8 +131,9 @@ window.CV = window.CV || {};
 
   /* ---------- Écran de connexion ---------- */
   function renderLogin() {
-    UI.applyTheme("espace");
+    UI.applyTheme("dinosaure");
     const c = screen();
+    c.appendChild(h("div", { class: "login-bg", style: { backgroundImage: "url(assets/map-dinosaure.png)" } }));
     const players = Store.listPlayers();
 
     const nameInput = h("input", { id: "login-name", placeholder: "Ton prénom", autocomplete: "off" });
@@ -208,129 +205,234 @@ window.CV = window.CV || {};
       "Astuce parent : installe l'appli sur l'écran d'accueil (menu du navigateur → « Ajouter à l'écran d'accueil »)."));
   }
 
-  /* ---------- Carte d'aventure ---------- */
+  /* ---------- Carte d'aventure (map déplaçable) ---------- */
+  let mapViewIndex = null;     // monde actuellement regardé
+  let mapDragged = false;      // pour distinguer clic / glissement
+
+  function svgEl(str) { const d = document.createElement("div"); d.innerHTML = str.trim(); return d.firstChild; }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  function spriteStyle(w, size) {
+    const g = w.grid || { cols: 1, rows: 1, col: 0, row: 0 };
+    const px = g.cols > 1 ? (g.col / (g.cols - 1)) * 100 : 0;
+    const py = g.rows > 1 ? (g.row / (g.rows - 1)) * 100 : 0;
+    return {
+      backgroundImage: "url(" + w.sprite + ")",
+      backgroundSize: (g.cols * 100) + "% " + (g.rows * 100) + "%",
+      backgroundPosition: px + "% " + py + "%",
+      width: size + "px", height: size + "px"
+    };
+  }
+
+  function stoneSVG(kind) {
+    const grad = {
+      open: ["#d9cba6", "#9c8758"], done: ["#e0cf8e", "#b08a2f"],
+      cracked: ["#cabca4", "#7d6f57"], locked: ["#838990", "#4c5054"],
+      boss: ["#ef8b4a", "#9c2f1a"]
+    }[kind] || ["#d9cba6", "#9c8758"];
+    const cracks = kind === "cracked"
+      ? '<path d="M50,20 L45,44 L54,62" stroke="#5b4f3d" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M45,44 L33,52" stroke="#5b4f3d" stroke-width="2.5" fill="none"/>' : "";
+    const moss = kind === "locked"
+      ? '<ellipse cx="37" cy="64" rx="13" ry="5" fill="#5a7d3a" opacity=".7"/><ellipse cx="64" cy="40" rx="8" ry="4" fill="#5a7d3a" opacity=".6"/>' : "";
+    return svgEl('<svg class="stone-svg" viewBox="0 0 100 100">' +
+      '<defs><radialGradient id="g_' + kind + '" cx="40%" cy="30%" r="78%">' +
+      '<stop offset="0" stop-color="' + grad[0] + '"/><stop offset="1" stop-color="' + grad[1] + '"/>' +
+      '</radialGradient></defs>' +
+      '<ellipse cx="50" cy="86" rx="33" ry="8" fill="rgba(0,0,0,.35)"/>' +
+      '<path d="M50,16 C73,16 85,34 83,55 C81,75 64,83 50,83 C36,83 19,75 17,55 C15,34 27,16 50,16 Z" fill="url(#g_' + kind + ')" stroke="rgba(0,0,0,.4)" stroke-width="2"/>' +
+      '<path d="M50,16 C66,16 79,30 81,49 C60,40 40,40 21,50 C23,30 34,16 50,16 Z" fill="#ffffff" opacity=".2"/>' +
+      moss + cracks + '</svg>');
+  }
+
   function renderCarte() {
     const state = Store.current();
-    const curWorld = CV.worldOfDay(state.currentDay || 1);
-    UI.applyTheme(curWorld.theme);
+    const curLevel = state.currentDay || 1;
+    const curWorldIndex = CV.worldIndexOfLevel(curLevel);
+    if (mapViewIndex === null || mapViewIndex > curWorldIndex) mapViewIndex = curWorldIndex;
+    const w = CV.worldByIndex(mapViewIndex);
+    UI.applyTheme(w.theme);
+    // garde l'avatar de la barre de statut en phase avec le monde courant
+    const curTheme = CV.worldByIndex(curWorldIndex).theme;
+    if (state.theme !== curTheme) { state.theme = curTheme; Store.save({ silent: true }); }
+
     const c = screen();
     c.appendChild(UI.statusBar(state));
     const banner = installBanner();
     if (banner) c.appendChild(banner);
-    c.appendChild(h("div", { class: "h-row" },
-      h("h2", { class: "section-title" }, "🗺️ Ta carte d'aventure"),
-      h("span", { class: "pill" }, "Jour " + (state.currentDay || 1) + " / " + CV.TOTAL_DAYS)));
 
-    CV.WORLDS.forEach((w) => {
-      const unlocked = (state.currentDay || 1) >= w.start;
-      const world = h("div", { class: "world world-" + w.theme + (unlocked ? "" : " locked") });
-      world.appendChild(h("div", { class: "world-head" },
-        h("div", { class: "world-emoji" }, w.emoji),
-        h("div", {},
-          h("div", { class: "world-name" }, w.name),
-          h("div", { class: "world-sub" }, unlocked ? w.intro : "🔒 Se débloque au jour " + w.start))));
+    // En-tête monde + flèches
+    c.appendChild(h("div", { class: "map-header" },
+      h("button", { class: "world-arrow", disabled: mapViewIndex <= 0 ? "" : null,
+        onclick: () => { if (mapViewIndex > 0) { mapViewIndex--; renderCarte(); } } }, "‹"),
+      h("div", { class: "map-title" },
+        h("div", { class: "wt-name" }, w.emoji + " " + w.name),
+        h("div", { class: "wt-sub" }, mapViewIndex < curWorldIndex ? "Monde terminé ✅" : "Monde " + (mapViewIndex + 1) + " / 5")),
+      h("button", { class: "world-arrow", disabled: mapViewIndex >= curWorldIndex ? "" : null,
+        onclick: () => { if (mapViewIndex < curWorldIndex) { mapViewIndex++; renderCarte(); } } }, "›")));
 
-      const grid = h("div", { class: "daygrid" });
-      for (let d = w.start; d <= w.end; d++) {
-        const day = CV.getDay(d);
-        const dp = (state.dayProgress || {})[d];
-        const isDone = dp && dp.done;
-        const isToday = d === (state.currentDay || 1);
-        const locked = d > (state.currentDay || 1);
-        let cls = "daynode";
-        if (day.type === "boss") cls += " boss";
-        else if (day.type === "fun") cls += " fun";
-        if (isDone) cls += " done";
-        if (isToday) cls += " today";
-        if (locked) cls += " locked";
-        const ico = day.type === "boss" ? "👑" : day.type === "fun" ? "🎉" : (isDone ? "✓" : day.emoji);
-        const node = h("button", { class: cls, onclick: () => {
-          if (locked) { UI.toast("🔒 Termine d'abord le jour " + (state.currentDay || 1) + " !"); return; }
-          goto("#/jour/" + d);
-        } },
-          h("span", { class: "d-num" }, d),
-          h("span", { class: "d-ico" }, ico),
-          isDone ? h("span", { class: "d-stars" }, "⭐".repeat(dp.stars || 1)) : null
-        );
-        grid.appendChild(node);
-      }
-      world.appendChild(grid);
-      c.appendChild(world);
-    });
+    const viewport = h("div", { class: "map-viewport" });
+    const layer = h("div", { class: "map-layer" });
+    const img = h("img", { class: "map-img", src: w.map, alt: w.name });
+    layer.appendChild(img);
+    viewport.appendChild(layer);
+    c.appendChild(viewport);
+    c.appendChild(h("div", { class: "map-hint" }, "Glisse la carte • touche une pierre pour jouer"));
+
+    setupMap(viewport, layer, w, mapViewIndex, curLevel, curWorldIndex, state);
   }
 
-  /* ---------- Vue d'une journée ---------- */
-  function renderDay(n) {
-    const state = Store.current();
-    const day = CV.getDay(n);
-    if (!day) return renderCarte();
-    if (n > (state.currentDay || 1)) { goto("#/carte"); return; }
-    UI.applyTheme(day.theme);
-    startSession(day);
+  function setupMap(viewport, layer, w, worldIndex, curLevel, curWorldIndex, state) {
+    // Dimensionne la carte : hauteur = un peu plus que la fenêtre → on déplace.
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    const ratio = 1408 / 768;
+    const zoom = 1.35;
+    const lh = Math.round(vh * zoom);
+    const lw = Math.round(lh * ratio);
+    layer.style.width = lw + "px";
+    layer.style.height = lh + "px";
 
-    const c = screen();
-    c.appendChild(backBar("#/carte", "Carte"));
+    const worldDone = worldIndex < curWorldIndex;
+    const curNodeIdx = worldIndex === curWorldIndex ? CV.nodeIndexOfLevel(curLevel) : (worldDone ? 8 : -1);
 
-    // En-tête de la journée
-    const head = h("div", { class: "world world-" + day.theme });
-    head.appendChild(h("div", { class: "world-head" },
-      h("div", { class: "world-emoji" }, day.type === "boss" ? "👑" : day.emoji),
-      h("div", {},
-        h("div", { class: "world-name" }, "Jour " + day.day + " — " + day.worldName),
-        h("div", { class: "world-sub" }, day.title))));
-    head.appendChild(h("div", { class: "row", style: { marginTop: "6px" } },
-      h("span", { class: "pill" }, day.type === "boss" ? "👑 BOSS" : day.type === "fun" ? "🎉 Découverte" : "✏️ Entraînement"),
-      h("span", { class: "pill" }, "⏱️ " + day.minMin + "–" + day.maxMin + " min"),
-      h("span", { class: "timer-bar", id: "timer-label" }, "0 min")));
-    c.appendChild(head);
+    // Chemin pointillé
+    const pts = w.nodes.map((n) => n[0] + "," + n[1]).join(" ");
+    layer.appendChild(svgEl('<svg class="map-path" viewBox="0 0 100 100" preserveAspectRatio="none">' +
+      '<polyline points="' + pts + '" fill="none" stroke="rgba(255,248,225,.55)" stroke-width="0.7" stroke-dasharray="1.6 1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'));
 
-    if (day.type === "boss") return renderBossOverview(c, day, state);
-
-    // Étapes (modules) de la journée
-    const wrap = h("div");
-    let allDone = true;
-    day.modules.forEach((mid) => {
-      const mod = CV.getModule(mid);
-      if (!mod) return;
-      const done = state.progress[mid] && state.progress[mid].done;
-      if (!done) allDone = false;
-      const subjLabel = { francais: "Français", maths: "Maths", sciences: "Sciences", culture: "Culture" }[mod.subject] || "";
-      const card = h("div", { class: "card row", style: { gap: "14px", cursor: "pointer" }, onclick: () => playModule(mod, day) },
-        h("div", { style: { fontSize: "34px" } }, mod.icon),
-        h("div", { style: { flex: "1" } },
-          h("div", { class: "pill", style: { marginBottom: "4px" } }, subjLabel + (mod.isDictee ? " · Dictée" : "")),
-          h("div", { style: { fontWeight: "bold", color: "var(--ink)" } }, mod.title)),
-        done ? h("div", { style: { fontSize: "20px" } }, "⭐".repeat(state.progress[mid].bestStars || 1))
-             : h("div", { class: "btn small" }, "Jouer →")
-      );
-      wrap.appendChild(card);
-    });
-    c.appendChild(wrap);
-
-    if (allDone) {
-      c.appendChild(h("button", { class: "btn big gold block mt", onclick: () => finishDay(day) },
-        "🏁 Terminer la journée"));
-    } else {
-      c.appendChild(h("p", { class: "center muted mt" }, "Fais chaque étape : une petite leçon, puis le défi !"));
+    // Brouillard de guerre (sauf monde entièrement terminé)
+    if (!worldDone) {
+      const revealed = [];
+      w.nodes.forEach((n, i) => { if (i <= curNodeIdx) revealed.push(n); });
+      let circles = "";
+      revealed.forEach((n, i) => {
+        const r = i === revealed.length - 1 ? 20 : 16;
+        circles += '<circle cx="' + n[0] + '" cy="' + n[1] + '" r="' + r + '" fill="url(#hole)"/>';
+      });
+      layer.appendChild(svgEl('<svg class="map-fog" viewBox="0 0 100 100" preserveAspectRatio="none">' +
+        '<defs><radialGradient id="hole"><stop offset="0" stop-color="black"/><stop offset="55%" stop-color="black"/><stop offset="100%" stop-color="white"/></radialGradient>' +
+        '<mask id="fogmask"><rect width="100" height="100" fill="white"/>' + circles + '</mask></defs>' +
+        '<rect width="100" height="100" fill="#0a0a14" opacity="0.8" mask="url(#fogmask)"/></svg>'));
     }
+
+    // Pierres
+    w.nodes.forEach((n, i) => {
+      const level = CV.levelNumber(worldIndex, i);
+      const isBoss = i === 8;
+      const dp = (state.dayProgress || {})[level];
+      const done = dp && dp.done;
+      const stars = done ? (dp.stars || 1) : 0;
+      const isCurrent = level === curLevel;
+      const locked = level > curLevel;
+      let kind = "open";
+      if (locked) kind = "locked";
+      else if (isBoss) kind = "boss";
+      else if (done) kind = stars <= 1 ? "cracked" : "done";
+      let cls = "stone " + (locked ? "locked" : "") + (isBoss ? " boss" : "") + (isCurrent ? " current" : "");
+      const stone = h("div", { class: cls, style: { left: n[0] + "%", top: n[1] + "%" } });
+      stone.appendChild(stoneSVG(kind));
+      stone.appendChild(h("div", { class: "stone-num" }, locked ? "🔒" : (isBoss ? "👑" : String(i + 1))));
+      if (done) stone.appendChild(h("div", { class: "stone-stars" }, "⭐".repeat(stars)));
+      stone.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (mapDragged) return;
+        if (locked) { UI.toast("🔒 Termine la pierre précédente d'abord !"); return; }
+        openNodeSheet(level);
+      });
+      layer.appendChild(stone);
+    });
+
+    // Personnage à la case courante (ou à la fin si monde terminé)
+    const heroNode = w.nodes[curNodeIdx >= 0 ? curNodeIdx : 0];
+    const hero = h("div", { class: "hero-sprite", style: Object.assign(spriteStyle(w, 66), { left: heroNode[0] + "%", top: heroNode[1] + "%" }) });
+    layer.appendChild(hero);
+
+    // Position initiale : centrée sur le personnage
+    const minTx = Math.min(0, vw - lw), minTy = Math.min(0, vh - lh);
+    const cx = (heroNode[0] / 100) * lw, cy = (heroNode[1] / 100) * lh;
+    let tx = clamp(vw / 2 - cx, minTx, 0), ty = clamp(vh / 2 - cy, minTy, 0);
+    const apply = () => { layer.style.transform = "translate(" + tx + "px," + ty + "px)"; };
+    apply();
+
+    // Glissement (drag) au doigt / souris.
+    // IMPORTANT : on ne capture le pointeur QUE lorsqu'un vrai glissement
+    // démarre, sinon un simple tap sur une pierre serait « avalé » par la carte.
+    let dragging = false, captured = false, sx = 0, sy = 0, stx = 0, sty = 0;
+    viewport.addEventListener("pointerdown", (e) => {
+      dragging = true; captured = false; mapDragged = false;
+      sx = e.clientX; sy = e.clientY; stx = tx; sty = ty;
+    });
+    viewport.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (!captured && Math.abs(dx) + Math.abs(dy) > 6) {
+        captured = true; mapDragged = true;
+        viewport.classList.add("dragging");
+        try { viewport.setPointerCapture(e.pointerId); } catch (_) {}
+      }
+      if (captured) { tx = clamp(stx + dx, minTx, 0); ty = clamp(sty + dy, minTy, 0); apply(); }
+    });
+    const end = () => { dragging = false; captured = false; viewport.classList.remove("dragging"); };
+    viewport.addEventListener("pointerup", end);
+    viewport.addEventListener("pointercancel", end);
+    viewport.addEventListener("pointerleave", end);
   }
 
-  function renderBossOverview(c, day, state) {
-    const already = state.dayProgress && state.dayProgress[day.day] && state.dayProgress[day.day].done;
-    c.appendChild(h("div", { class: "card center" },
-      h("div", { class: "lesson-icon" }, "👑"),
-      h("h2", {}, "Le Grand Défi !"),
-      h("p", {}, "Un quiz qui mélange tout ce que tu as appris dans ce monde. Réussis-le pour devenir le héros et débloquer la suite !"),
-      h("button", { class: "btn big block mt", onclick: () => playBoss(day) }, "⚔️ Affronter le défi"),
-      already ? h("p", { class: "muted mt" }, "Déjà réussi — tu peux le rejouer pour gagner plus d'étoiles.") : null
-    ));
+  /* Petit panneau d'une pierre (au tap) */
+  function openNodeSheet(level) {
+    const state = Store.current();
+    const lv = CV.getLevel(level);
+    const mod = lv.moduleId ? CV.getModule(lv.moduleId) : null;
+    const dp = (state.dayProgress || {})[level];
+    const done = dp && dp.done;
+
+    const backdrop = h("div", { class: "sheet-backdrop", onclick: closeSheet });
+    const subj = mod ? ({ francais: "Français", maths: "Maths", sciences: "Sciences", culture: "Culture" }[mod.subject] || "") : "";
+    const sheet = h("div", { class: "node-sheet" },
+      h("div", { class: "ns-head" },
+        h("div", { class: "ns-emoji" }, lv.isBoss ? "👑" : (mod ? mod.icon : "✏️")),
+        h("div", { style: { flex: "1" } },
+          h("div", { class: "pill" }, lv.isBoss ? "BOSS du monde" : (subj + (mod && mod.isDictee ? " · Dictée" : ""))),
+          h("div", { style: { fontWeight: "bold", fontSize: "17px", marginTop: "4px" } },
+            lv.isBoss ? "Le Grand Défi" : (mod ? mod.title : "Niveau")))),
+      done ? h("p", { class: "muted" }, "Déjà réussi " + "⭐".repeat(dp.stars || 1) + " — tu peux rejouer pour faire mieux.") : null,
+      h("button", { class: "btn big block mt", onclick: () => { closeSheet(); openLevel(level); } },
+        lv.isBoss ? "⚔️ Affronter le boss" : (done ? "↻ Rejouer" : "▶️ Jouer")),
+      h("button", { class: "btn debug block mt", onclick: () => { closeSheet(); skipLevel(level); } },
+        "🔓 Débloquer (test)")
+    );
+    appEl.appendChild(backdrop);
+    appEl.appendChild(sheet);
+  }
+  function closeSheet() {
+    appEl.querySelectorAll(".node-sheet, .sheet-backdrop").forEach((e) => e.remove());
+  }
+
+  /* Termine un niveau instantanément (bouton de test). */
+  function skipLevel(level) {
+    const state = Store.current();
+    const lv = CV.getLevel(level);
+    if (lv.moduleId) {
+      const mod = CV.getModule(lv.moduleId);
+      Game.awardModule(state, mod, 1, 1);
+    }
+    finishLevel(lv, 3, null, null, true);
+  }
+
+  /* ---------- Ouvrir un niveau ---------- */
+  function openLevel(level) {
+    const lv = CV.getLevel(level);
+    if (!lv) return goto("#/carte");
+    const state = Store.current();
+    if (lv.level > (state.currentDay || 1)) { goto("#/carte"); return; }
+    UI.applyTheme(lv.theme);
+    if (lv.isBoss) return playBoss(lv);
+    playModule(CV.getModule(lv.moduleId), lv);
   }
 
   /* ---------- Leçon ---------- */
-  function playModule(mod, day) {
-    UI.applyTheme(day.theme);
+  function playModule(mod, lv) {
     const c = screen();
-    c.appendChild(backBar("#/jour/" + day.day, "Jour " + day.day));
+    c.appendChild(backBar("#/carte", "Carte"));
     const card = h("div", { class: "card" });
     card.appendChild(h("div", { class: "lesson-icon" }, mod.icon));
     card.appendChild(h("h2", { class: "center" }, mod.title));
@@ -340,15 +442,16 @@ window.CV = window.CV || {};
     card.appendChild(ul);
     if (mod.lesson.example) card.appendChild(h("div", { class: "lesson-example", html: "📌 " + mod.lesson.example }));
     if (mod.lesson.tip) card.appendChild(h("div", { class: "lesson-tip", html: mod.lesson.tip }));
-    card.appendChild(h("button", { class: "btn big block mt", onclick: () => playExercises(mod, day) },
+    card.appendChild(h("button", { class: "btn big block mt", onclick: () => playExercises(mod, lv) },
       mod.isDictee ? "🎧 Commencer la dictée →" : "✏️ Au défi ! →"));
+    card.appendChild(h("button", { class: "btn debug block mt", onclick: () => skipLevel(lv.level) }, "🔓 Débloquer (test)"));
     c.appendChild(card);
   }
 
   /* ---------- Exercices d'un module ---------- */
-  function playExercises(mod, day) {
+  function playExercises(mod, lv) {
     const c = screen();
-    c.appendChild(backBar("#/jour/" + day.day, "Jour " + day.day));
+    c.appendChild(backBar("#/carte", "Carte"));
     c.appendChild(h("h2", { class: "section-title" }, mod.icon + " " + mod.title));
     const box = h("div", { class: "card" });
     c.appendChild(box);
@@ -356,99 +459,87 @@ window.CV = window.CV || {};
       onComplete: ({ correct, total }) => {
         const res = Game.awardModule(Store.current(), mod, correct, total);
         Store.save();
-        showModuleResult(mod, day, correct, total, res);
+        showLevelResult(mod, lv, correct, total, res);
       }
     });
   }
 
-  function showModuleResult(mod, day, correct, total, res) {
-    const c = screen();
+  function showLevelResult(mod, lv, correct, total, res) {
     const state = Store.current();
-    const allDone = day.modules.every((mid) => state.progress[mid] && state.progress[mid].done);
+    const r = Game.completeDay(state, lv, res.stars);
+    Store.save();
+    mapViewIndex = null;
+    const badges = (res.newBadges || []).concat(r.newBadges || []);
+    const c = screen();
     UI.victory(c, {
       emoji: res.stars === 3 ? "🌟" : "🎉",
       title: res.stars === 3 ? "Sans faute, incroyable !" : "Bien joué !",
       stars: res.stars,
       subtitle: correct + " / " + total + " bonnes réponses",
       xp: res.xpGained,
-      badges: res.newBadges,
-      cta: allDone ? "🏁 Terminer la journée" : "Étape suivante →",
-      onContinue: () => {
-        if (res.leveledUp) UI.toast("⬆️ Niveau " + res.newLevel + " atteint ! Bravo !");
-        if (allDone) finishDay(day); else renderDay(day.day);
-      }
+      badges: badges,
+      cta: "Retour à la carte 🗺️",
+      onContinue: () => { if (res.leveledUp) UI.toast("⬆️ Niveau " + res.newLevel + " !"); goto("#/carte"); }
     });
   }
 
   /* ---------- Boss ---------- */
-  function playBoss(day) {
-    const exs = CV.buildBossExercises(day, 8);
+  function playBoss(lv) {
+    const exs = CV.buildBossExercises(lv, 8);
     const c = screen();
-    c.appendChild(backBar("#/jour/" + day.day, "Jour " + day.day));
-    c.appendChild(h("h2", { class: "section-title" }, "👑 Le Grand Défi"));
+    c.appendChild(backBar("#/carte", "Carte"));
+    c.appendChild(h("h2", { class: "section-title" }, "👑 Le Grand Défi — " + lv.worldName));
     const box = h("div", { class: "card" });
     c.appendChild(box);
-    if (!exs.length) { box.appendChild(h("p", {}, "Reviens après avoir fait les journées d'entraînement de ce monde !")); return; }
+    c.appendChild(h("button", { class: "btn debug block mt", onclick: () => skipLevel(lv.level) }, "🔓 Débloquer (test)"));
+    if (!exs.length) { box.appendChild(h("p", {}, "Termine d'abord les leçons de ce monde !")); return; }
     CV.Engine.run(box, exs, {
       onComplete: ({ correct, total }) => {
         const state = Store.current();
         const stars = Game.starsForScore(correct, total);
         state.xp += correct * 10;
         Store.save();
-        finishDay(day, stars, correct, total);
+        finishLevel(lv, stars, correct, total, false);
       }
     });
   }
 
-  /* ---------- Fin de journée ---------- */
-  function finishDay(day, bossStars, bossCorrect, bossTotal) {
-    stopTimer();
+  /* ---------- Fin d'un niveau ---------- */
+  function finishLevel(lv, stars, correct, total, isSkip) {
     const state = Store.current();
-    let stars;
-    if (day.type === "boss") stars = bossStars || 2;
-    else {
-      const arr = day.modules.map((mid) => (state.progress[mid] && state.progress[mid].bestStars) || 1);
-      stars = Math.round(arr.reduce((a, b) => a + b, 0) / Math.max(1, arr.length));
-    }
-    const r = Game.completeDay(state, day, stars);
+    Game.completeDay(state, lv, stars);
     Store.save();
-
-    const finished = (state.currentDay > CV.TOTAL_DAYS) || Object.keys(state.dayProgress).length >= CV.TOTAL_DAYS;
-    const c = screen();
-    UI.victory(c, {
-      emoji: day.type === "boss" ? "👑" : "🏁",
-      title: day.type === "boss" ? "Monde terminé, tu es un héros !" : "Journée réussie !",
-      stars: stars,
-      subtitle: day.type === "boss"
-        ? (bossCorrect != null ? bossCorrect + " / " + bossTotal + " au défi final" : "Quel champion !")
-        : "Tu as gagné +" + day.reward + " XP de bonus.",
-      xp: day.type === "boss" ? null : day.reward,
-      badges: r.newBadges,
-      cta: finished ? "🎓 Voir mes trophées" : "Retour à la carte 🗺️",
-      onContinue: () => {
-        if (finished) { UI.toast("🎓 Parcours terminé, prêt pour le CM1 !"); goto("#/recompenses"); }
-        else goto("#/carte");
-      }
-    });
+    mapViewIndex = null;
+    if (lv.isBoss) return worldCleared(lv, stars, correct, total);
+    goto("#/carte");
   }
 
-  /* ---------- Minuteur de session ---------- */
-  function startSession(day) {
-    stopTimer();
-    session = { start: Date.now(), min: day.minMin, max: day.maxMin, minFlag: false, maxFlag: false };
-    timerInterval = setInterval(() => {
-      const mins = (Date.now() - session.start) / 60000;
-      const label = document.getElementById("timer-label");
-      if (label) label.textContent = Math.floor(mins) + " min";
-      if (!session.minFlag && mins >= session.min) {
-        session.minFlag = true;
-        UI.toast("👏 Temps minimum atteint ! Tu peux continuer ou faire une pause.");
-      }
-      if (!session.maxFlag && mins >= session.max) {
-        session.maxFlag = true;
-        UI.toast("⏰ Super session ! C'est le moment de faire une pause. 🧃");
-      }
-    }, 1000);
+  /* ---------- Monde terminé → monde suivant ---------- */
+  function worldCleared(lv, stars, correct, total) {
+    const state = Store.current();
+    const fullyDone = Object.keys(state.dayProgress).length >= CV.TOTAL_DAYS;
+    const c = screen();
+    UI.confetti();
+    if (fullyDone) {
+      UI.victory(c, {
+        emoji: "🎓", title: "Tu as fini toute l'aventure !",
+        stars: stars, subtitle: "Bravo, tu es prêt pour le CM1 ! 🎉",
+        cta: "Voir mes trophées 🏆", onContinue: () => goto("#/recompenses")
+      });
+      return;
+    }
+    const nextIdx = Math.min(CV.WORLDS.length - 1, CV.worldIndexOfLevel(state.currentDay || 1));
+    const nextW = CV.worldByIndex(nextIdx);
+    const box = h("div", { class: "card center world-transition" },
+      h("div", { style: { fontSize: "70px" } }, "👑"),
+      h("h2", {}, lv.worldName + " — terminé !"),
+      UI.stars(stars),
+      h("p", { class: "muted" }, correct != null ? ("Boss vaincu : " + correct + " / " + total) : "Boss vaincu !"),
+      h("div", { style: { fontSize: "56px", marginTop: "12px" } }, nextW.emoji),
+      h("p", {}, "Nouveau monde débloqué : " + nextW.name + " !"),
+      h("button", { class: "btn big gold block mt", onclick: () => { mapViewIndex = null; goto("#/carte"); } },
+        "Entrer dans le monde suivant →"));
+    c.appendChild(box);
   }
 
   /* ---------- Trophées & statistiques ---------- */
@@ -472,7 +563,7 @@ window.CV = window.CV || {};
     const pct = st.totalAnswered ? Math.round((st.totalCorrect / st.totalAnswered) * 100) : 0;
     c.appendChild(h("div", { class: "card glass mt" },
       h("h3", {}, "📊 Mes progrès"),
-      statLine("Jours réussis", Object.keys(state.dayProgress || {}).length + " / " + CV.TOTAL_DAYS),
+      statLine("Niveaux réussis", Object.keys(state.dayProgress || {}).length + " / " + CV.TOTAL_DAYS),
       statLine("Défis terminés", st.modulesDone || 0),
       statLine("Bonnes réponses", (st.totalCorrect || 0) + " (" + pct + "% de réussite)"),
       statLine("Étoiles gagnées", "⭐ " + (state.stars || 0)),
@@ -495,18 +586,6 @@ window.CV = window.CV || {};
     c.appendChild(h("h2", { class: "section-title" }, "🧑‍🚀 Mon profil"));
     const profBanner = installBanner();
     if (profBanner) c.appendChild(profBanner);
-
-    // Choix du thème (univers)
-    const themeCard = h("div", { class: "card glass" }, h("strong", {}, "Mon univers préféré"));
-    const pick = h("div", { class: "theme-pick mt" });
-    [["espace", "🚀 Espace", "world-espace"], ["pirates", "🏴‍☠️ Pirates", "world-pirates"], ["chevaliers", "⚔️ Chevaliers", "world-chevaliers"]]
-      .forEach(([key, label, cls]) => {
-        pick.appendChild(h("div", { class: "theme-opt " + cls + (state.theme === key ? " sel" : ""), onclick: () => {
-          Store.set({ theme: key }); UI.applyTheme(key); renderProfil();
-        } }, label));
-      });
-    themeCard.appendChild(pick);
-    c.appendChild(themeCard);
 
     // Sauvegarde : choix Local / Cloud (Cloud désactivé si indisponible)
     const cloudOn = !!(state.settings && state.settings.cloud);

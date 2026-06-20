@@ -47,9 +47,11 @@ CV.Game = (function () {
     { id: "explorer",  emoji: "🔬", name: "Explorateur",      check: (s) => !!s.flags && s.flags.funDone },
     { id: "level5",    emoji: "⭐", name: "Niveau 5",         check: (s) => levelInfo(s.xp).level >= 5 },
     { id: "level10",   emoji: "✨", name: "Niveau 10",        check: (s) => levelInfo(s.xp).level >= 10 },
-    { id: "boss1",     emoji: "🚀", name: "Héros de l'Espace", check: (s) => !!s.flags && s.flags.boss_espace },
-    { id: "boss2",     emoji: "🏴‍☠️", name: "Roi des Pirates", check: (s) => !!s.flags && s.flags.boss_pirates },
-    { id: "boss3",     emoji: "⚔️", name: "Grand Chevalier",  check: (s) => !!s.flags && s.flags.boss_chevaliers },
+    { id: "boss_dino", emoji: "🦖", name: "Maître des Dinos",  check: (s) => !!s.flags && s.flags.boss_dinosaure },
+    { id: "boss_uly",  emoji: "🏛️", name: "Héros de l'Olympe", check: (s) => !!s.flags && s.flags.boss_ulysse },
+    { id: "boss_chev", emoji: "⚔️", name: "Grand Chevalier",  check: (s) => !!s.flags && s.flags.boss_chevaliers },
+    { id: "boss_pir",  emoji: "🏴‍☠️", name: "Roi des Pirates", check: (s) => !!s.flags && s.flags.boss_pirate },
+    { id: "boss_esp",  emoji: "🚀", name: "Héros de l'Espace", check: (s) => !!s.flags && s.flags.boss_espace },
     { id: "cm1",       emoji: "🎓", name: "Prêt pour le CM1",  check: (s) => Object.keys(s.dayProgress || {}).length >= CV.TOTAL_DAYS }
   ];
 
