@@ -301,11 +301,35 @@ window.CV = window.CV || {};
     "Les élèves écoutent attentivement la leçon.",
     "Le renard roux traverse rapidement le chemin.",
     "Pendant les vacances, nous visitons un grand château.",
-    "Les nuages gris annoncent un orage violent."
+    "Les nuages gris annoncent un orage violent.",
+    "Ce matin, le petit chat noir a grimpé tout en haut du grand arbre du jardin.",
+    "Pendant les vacances, nous avons visité un château fort avec de hautes tours et un pont-levis.",
+    "Dans la forêt, les écureuils ramassent des noisettes pour préparer leurs réserves avant l'arrivée de l'hiver.",
+    "Le maître a écrit la nouvelle leçon au tableau, puis les élèves ont recopié leur cahier.",
+    "Quand le soleil se couche, le ciel devient orange et les oiseaux rentrent dormir dans leurs nids.",
+    "Ma grande sœur prépare une délicieuse tarte aux pommes que toute la famille mangera ce soir.",
+    "Les pompiers courageux sont arrivés très vite pour éteindre l'incendie qui ravageait la vieille grange.",
+    "Sur la plage, les enfants construisent un immense château de sable avec des coquillages et des drapeaux.",
+    "Chaque matin, le boulanger se lève très tôt pour préparer le pain chaud et les croissants dorés.",
+    "Le vieux pêcheur attendait patiemment au bord de la rivière que les poissons mordent à son hameçon.",
+    "Pendant la récréation, les garçons et les filles jouent ensemble à cache-cache dans la grande cour.",
+    "Au zoo, nous avons observé les singes sauter de branche en branche en poussant de grands cris.",
+    "La maîtresse raconte une histoire passionnante et toute la classe écoute sans faire le moindre bruit.",
+    "Hier, il a tellement plu que les rues du village se sont transformées en petites rivières.",
+    "Le jardinier plante des fleurs colorées le long de l'allée pour rendre le parc plus joli.",
+    "Dans le ciel d'été, un magnifique arc-en-ciel est apparu juste après la fin de l'orage.",
+    "Les astronautes ont enfilé leur combinaison blanche avant de monter à bord de la fusée argentée.",
+    "Mon petit frère apprend à faire du vélo sans les roulettes dans le parc près de la maison.",
+    "La fermière donne du grain aux poules et ramasse les œufs frais tous les matins.",
+    "Le chevalier monte fièrement sur son cheval blanc pour partir à l'aventure à travers le royaume.",
+    "Nous avons ramassé des champignons dans les bois, mais maman a jeté ceux qui étaient dangereux.",
+    "Le marchand installe ses fruits et ses légumes sur le marché coloré dès le lever du jour.",
+    "Une petite souris grise se faufile sous la porte pour aller grignoter un morceau de fromage.",
+    "Les vagues de la mer recouvrent doucement les pieds des enfants qui ramassent de jolis coquillages."
   ];
 
-  /* Dictées COURTES uniquement : on ne garde que les phrases de 4 à 9 mots. */
-  CV.DICTEE_WORDS = { min: 4, max: 9 };
+  /* Dictées : on ne garde que les phrases de 10 à 20 mots. */
+  CV.DICTEE_WORDS = { min: 10, max: 20 };
   function wordCount(s) { return s.replace(/[.,!?;:«»]/g, "").split(/\s+/).filter(Boolean).length; }
   CV.drawDictee = function (n) {
     n = Math.max(1, n || 1);
