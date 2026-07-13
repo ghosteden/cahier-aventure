@@ -41,6 +41,7 @@ CV.Store = (function () {
       progress: {},      // moduleId -> { done:true, bestStars, lastScore }
       dayProgress: {},   // numéro de jour -> { done:true, stars }
       currentDay: 1,
+      heroNode: {},      // index du monde -> pierre où se tient le héros sur la carte (sauvegardé)
       settings: { minMin: 20, maxMin: 35, sound: true, cloud: true },
       stats: { totalCorrect: 0, totalAnswered: 0, sessions: 0, modulesDone: 0 },
       createdAt: nowISO(),

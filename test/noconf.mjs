@@ -1,0 +1,20 @@
+import { chromium } from "playwright";
+const URL="http://localhost:8080/index.html";
+const b=await chromium.launch();
+const page=await (await b.newContext({viewport:{width:414,height:820}})).newPage();
+page.on("dialog", d=>d.accept());
+const errs=[]; page.on("pageerror",e=>errs.push(e.message));
+await page.goto(URL,{waitUntil:"domcontentloaded"}); await page.waitForSelector("#app:not([hidden])");
+await page.addStyleTag({content:"*{animation:none!important;transition:none!important}"});
+await page.fill("#login-name","NoConf"); await page.click('button:has-text("C\'est parti")');
+await page.waitForSelector(".map-viewport"); await page.waitForTimeout(500);
+await page.click(".stone.current"); await page.waitForSelector(".node-sheet");
+await page.click('.node-sheet .skip-mini');           // Passer (whole level)
+await page.waitForTimeout(400);
+const title=await page.locator(".victory h2").innerText().catch(()=>"-");
+const confetti=await page.locator(".confetti").count();
+const starsShown=await page.locator(".stars-won").count();
+const dp=await page.evaluate(()=>CV.Store.current().dayProgress[1]);
+console.log("Titre:",title,"| confettis:",confetti,"(attendu 0) | étoiles affichées:",starsShown,"| jour1:",JSON.stringify(dp));
+console.log("Erreurs:",errs.length);
+await b.close();

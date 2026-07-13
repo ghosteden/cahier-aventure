@@ -258,5 +258,267 @@ CV.content.francais = [
         "À la récréation, les enfants jouent au ballon."
       ] }
     ]
+  },
+
+  {
+    id: "fr-imparfait",
+    subject: "francais",
+    title: "L'imparfait",
+    icon: "⏳",
+    lesson: {
+      intro: "L'imparfait raconte le passé : des habitudes ou des actions qui duraient (« autrefois », « quand j'étais petit »).",
+      points: [
+        "Verbes en -ER : je chantais, tu chantais, il chantait, nous chantions, vous chantiez, ils chantaient.",
+        "Terminaisons de l'imparfait : -ais, -ais, -ait, -ions, -iez, -aient.",
+        "ÊTRE : j'étais, tu étais, il était, nous étions, vous étiez, ils étaient.",
+        "AVOIR : j'avais, tu avais, il avait, nous avions, vous aviez, ils avaient."
+      ],
+      example: "« Avant, nous habitions à la campagne et nous avions un grand jardin. »",
+      tip: "À l'imparfait, on entend souvent « -ait » à la fin (il chantait, il jouait)."
+    },
+    exercises: [
+      { type: "fill", q: "Imparfait : « Autrefois, je (jouer) ___ dans la cour. »", answer: ["jouais"], explain: "je jouais (-ais)." },
+      { type: "qcm", q: "« Quand nous étions petits, nous ___ à la mer. » (aller)", choices: ["allions", "allons", "irons"], answer: 0, explain: "imparfait avec nous → -ions." },
+      { type: "fill", q: "« Il (être) ___ content hier. »", answer: ["était"], explain: "verbe être à l'imparfait : il était." }
+    ]
+  },
+
+  {
+    id: "fr-futur",
+    subject: "francais",
+    title: "Le futur",
+    icon: "🚀",
+    lesson: {
+      intro: "Le futur dit ce qui va se passer plus tard (« demain », « bientôt »).",
+      points: [
+        "Verbes en -ER : je chanterai, tu chanteras, il chantera, nous chanterons, vous chanterez, ils chanteront.",
+        "Terminaisons du futur : -rai, -ras, -ra, -rons, -rez, -ront.",
+        "ÊTRE : je serai, tu seras, il sera, nous serons, vous serez, ils seront.",
+        "AVOIR : j'aurai, tu auras, il aura, nous aurons, vous aurez, ils auront."
+      ],
+      example: "« Demain, nous irons au parc et nous jouerons au ballon. »",
+      tip: "Au futur, tu entends souvent le « r » : il mangeRA, tu iRAS."
+    },
+    exercises: [
+      { type: "fill", q: "Futur : « Demain, je (manger) ___ une glace. »", answer: ["mangerai"], explain: "je mangerai (-rai)." },
+      { type: "qcm", q: "« L'année prochaine, tu ___ au CM1. » (être)", choices: ["seras", "étais", "es"], answer: 0, explain: "futur du verbe être : tu seras." },
+      { type: "fill", q: "« Ils (avoir) ___ bientôt des vacances. »", answer: ["auront"], explain: "futur d'avoir : ils auront." }
+    ]
+  },
+
+  {
+    id: "fr-onont",
+    subject: "francais",
+    title: "on / ont  et  son / sont",
+    icon: "🔍",
+    lesson: {
+      intro: "Encore des mots qui se prononcent pareil ! Voici comment ne plus les confondre.",
+      points: [
+        "« on » remplace il/elle. Astuce : remplace par « il ». On joue → Il joue.",
+        "« ont » = le verbe avoir (ils ont). Astuce : « avaient ». Ils ont → ils avaient.",
+        "« son » = à lui (son vélo). Astuce : on peut dire « mon » (mon vélo).",
+        "« sont » = le verbe être (ils sont). Astuce : « étaient ». Ils sont → ils étaient."
+      ],
+      example: "« On a vu que les enfants ont rangé leur chambre. »",
+      tip: "Si tu peux dire « avaient » → « ont ». Si tu peux dire « étaient » → « sont »."
+    },
+    exercises: [
+      { type: "qcm", q: "« ___ va jouer dehors. »", choices: ["On", "Ont"], answer: 0, explain: "« Il va » → on." },
+      { type: "qcm", q: "« Les chats ___ faim. »", choices: ["ont", "on"], answer: 0, explain: "« avaient faim » → ont." },
+      { type: "qcm", q: "« Mes amis ___ gentils. »", choices: ["son", "sont"], answer: 1, explain: "« étaient gentils » → sont." },
+      { type: "fill", q: "Complète : « Tom cherche ___ ballon. »", answer: ["son"], explain: "à lui → son ballon." }
+    ]
+  },
+
+  {
+    id: "fr-accord-adj",
+    subject: "francais",
+    title: "L'accord de l'adjectif",
+    icon: "🎨",
+    lesson: {
+      intro: "L'adjectif s'accorde avec le nom : il change au féminin et au pluriel.",
+      points: [
+        "Au féminin, on ajoute souvent un -e : un chat noir → une chatte noire.",
+        "Au pluriel, on ajoute souvent un -s : un chat noir → des chats noirs.",
+        "Au féminin pluriel, on met les deux : des fleurs bleues.",
+        "Certains changent : beau → belle, nouveau → nouvelle, gros → grosse."
+      ],
+      example: "une grande maison · des grandes maisons · un petit chien · des petits chiens.",
+      tip: "Cherche le nom : masculin/féminin ? singulier/pluriel ? L'adjectif suit."
+    },
+    exercises: [
+      { type: "fill", q: "Accorde : « des chats (noir) → des chats ___ »", answer: ["noirs"], explain: "pluriel → -s." },
+      { type: "fill", q: "Accorde : « une fleur (bleu) → une fleur ___ »", answer: ["bleue"], explain: "féminin → -e." },
+      { type: "qcm", q: "« des voitures ___ » (rapide)", choices: ["rapide", "rapides", "rapids"], answer: 1, explain: "pluriel → rapides." },
+      { type: "fill", q: "Accorde : « une (grand) ___ table »", answer: ["grande"], explain: "féminin de grand → grande." }
+    ]
+  },
+
+  {
+    id: "fr-present3",
+    subject: "francais",
+    title: "Le présent : faire, dire, aller, venir",
+    icon: "🗣️",
+    lesson: {
+      intro: "Des verbes très utiles mais un peu spéciaux, à connaître par cœur au présent.",
+      points: [
+        "FAIRE : je fais, tu fais, il fait, nous faisons, vous faites, ils font.",
+        "DIRE : je dis, tu dis, il dit, nous disons, vous dites, ils disent.",
+        "ALLER : je vais, tu vas, il va, nous allons, vous allez, ils vont.",
+        "VENIR : je viens, tu viens, il vient, nous venons, vous venez, ils viennent."
+      ],
+      example: "« Nous faisons nos devoirs, puis nous allons jouer. »",
+      tip: "Attention : « vous faites » et « vous dites » (pas « faisez » ni « disez ») !"
+    },
+    exercises: [
+      { type: "fill", q: "« Nous (faire) ___ un gâteau. »", answer: ["faisons"], explain: "nous faisons." },
+      { type: "qcm", q: "« Vous ___ la vérité. » (dire)", choices: ["dites", "disez", "dis"], answer: 0, explain: "vous dites (exception)." },
+      { type: "fill", q: "« Ils (venir) ___ demain. »", answer: ["viennent"], explain: "ils viennent." },
+      { type: "qcm", q: "« Je ___ à l'école. » (aller)", choices: ["vais", "va", "vas"], answer: 0, explain: "je vais." }
+    ]
+  },
+
+  {
+    id: "fr-passecompose",
+    subject: "francais",
+    title: "Le passé composé",
+    icon: "🕰️",
+    lesson: {
+      intro: "Le passé composé raconte une action terminée. Il est formé de DEUX mots : un auxiliaire (avoir ou être) + le participe passé.",
+      points: [
+        "Avec AVOIR : j'ai mangé, tu as mangé, il a mangé, nous avons mangé…",
+        "Le participe passé des verbes en -ER se termine par -é : manger → mangé, jouer → joué.",
+        "Avec ÊTRE (aller, venir, partir, tomber, arriver…) : je suis allé, tu es parti…",
+        "Avec être, le participe s'accorde : elle est allée, ils sont partis."
+      ],
+      example: "« Hier, j'ai joué au foot, puis je suis rentré à la maison. »",
+      tip: "Cherche les deux morceaux : (avoir/être) + le verbe en -é."
+    },
+    exercises: [
+      { type: "fill", q: "Passé composé : « Hier, j'(manger) ___ une pomme. »  (2 mots)", answer: ["ai mangé"], explain: "auxiliaire avoir + mangé." },
+      { type: "qcm", q: "« Elle ___ allée à l'école. »", choices: ["est", "a", "as"], answer: 0, explain: "aller se conjugue avec être : elle est allée." },
+      { type: "fill", q: "Participe passé de « chanter » : ___", answer: ["chanté"], explain: "verbes en -er → -é." }
+    ]
+  },
+
+  {
+    id: "fr-mbp",
+    subject: "francais",
+    title: "m devant m, b, p",
+    icon: "✏️",
+    lesson: {
+      intro: "Petite règle magique d'orthographe : devant les lettres m, b et p, on écrit m au lieu de n.",
+      points: [
+        "Devant m, b, p → on met un m (et pas un n).",
+        "Exemples : une chambre, un tambour, une jambe, un pompier.",
+        "Aussi : emmener, un timbre, grimper, tomber, la campagne.",
+        "Attention aux exceptions : un bonbon, un bonbonnière, néanmoins."
+      ],
+      example: "un no__bre → un nombre · une cha__bre → une chambre · gri__per → grimper.",
+      tip: "Si le mot a un b, un p ou un m juste après, écris un m."
+    },
+    exercises: [
+      { type: "qcm", q: "Complète : « une cha__bre »", choices: ["m", "n"], answer: 0, explain: "devant b → m." },
+      { type: "qcm", q: "Complète : « un ta__bour »", choices: ["m", "n"], answer: 0, explain: "devant b → m." },
+      { type: "qcm", q: "Complète : « une ora__ge »", choices: ["m", "n"], answer: 1, explain: "devant g → n (règle seulement pour m, b, p)." },
+      { type: "fill", q: "Écris correctement : « un no_bre » → ___", answer: ["nombre"], explain: "devant b → m : nombre." }
+    ]
+  },
+
+  {
+    id: "fr-homophones2",
+    subject: "francais",
+    title: "ou / où  et  ces / ses",
+    icon: "🔎",
+    lesson: {
+      intro: "Encore des sosies ! Deux nouvelles paires à ne plus confondre.",
+      points: [
+        "« ou » = ou bien (un choix). Astuce : on peut dire « ou bien ». Thé ou café ?",
+        "« où » (avec accent) = le lieu. Astuce : ça répond à « à quel endroit ? ». Où es-tu ?",
+        "« ces » = ceux-là (pluriel de ce/cette). Ces livres = plusieurs livres.",
+        "« ses » = à lui/elle (les siens). Il range ses affaires = ses propres affaires."
+      ],
+      example: "« Où as-tu mis ces crayons et ses feutres ? »",
+      tip: "« ou bien » → ou. Un lieu → où. « ceux-là » → ces. « les siens » → ses."
+    },
+    exercises: [
+      { type: "qcm", q: "« Tu veux du lait ___ du jus ? »", choices: ["ou", "où"], answer: 0, explain: "« ou bien » → ou." },
+      { type: "qcm", q: "« ___ habites-tu ? »", choices: ["Ou", "Où"], answer: 1, explain: "un lieu → où." },
+      { type: "qcm", q: "« Léa a rangé ___ jouets. » (les siens)", choices: ["ses", "ces"], answer: 0, explain: "à elle → ses." },
+      { type: "qcm", q: "« Regarde ___ étoiles ! » (celles-là)", choices: ["ses", "ces"], answer: 1, explain: "celles-là → ces." }
+    ]
+  },
+
+  {
+    id: "fr-types-phrases",
+    subject: "francais",
+    title: "Les types de phrases",
+    icon: "❓",
+    lesson: {
+      intro: "Une phrase peut servir à raconter, poser une question, montrer une émotion ou donner un ordre.",
+      points: [
+        "Déclarative : elle raconte, se termine par un point. « Le chien dort. »",
+        "Interrogative : elle pose une question, se termine par « ? ». « As-tu faim ? »",
+        "Exclamative : elle montre une émotion, se termine par « ! ». « Quelle belle journée ! »",
+        "Impérative : elle donne un ordre ou un conseil. « Range ta chambre. »"
+      ],
+      example: "Ferme la porte. (impérative) · Tu viens ? (interrogative) · Bravo ! (exclamative)",
+      tip: "Regarde le signe de fin et écoute ta voix : elle monte pour une question."
+    },
+    exercises: [
+      { type: "qcm", q: "Quel type : « Comme il fait chaud ! »", choices: ["déclarative", "interrogative", "exclamative"], answer: 2, explain: "une émotion → exclamative." },
+      { type: "qcm", q: "Quel type : « Où vas-tu ? »", choices: ["interrogative", "impérative", "déclarative"], answer: 0, explain: "une question → interrogative." },
+      { type: "qcm", q: "« Ferme la fenêtre. » est une phrase…", choices: ["déclarative", "impérative", "exclamative"], answer: 1, explain: "un ordre → impérative." },
+      { type: "truefalse", q: "« Je mange une pomme. » est une phrase déclarative.", answer: true, explain: "elle raconte : déclarative." }
+    ]
+  },
+
+  {
+    id: "fr-familles",
+    subject: "francais",
+    title: "Familles de mots, préfixes et suffixes",
+    icon: "🌳",
+    lesson: {
+      intro: "Les mots d'une même famille partagent une racine (un morceau commun) et une idée proche.",
+      points: [
+        "Famille de « dent » : dent, dentiste, dentaire, dentifrice.",
+        "Un PRÉFIXE se place devant : re- (refaire), dé- (défaire), in-/im- (impossible).",
+        "Un SUFFIXE se place après : -eur (chanteur), -tion (addition), -able (mangeable).",
+        "Connaître les familles aide à comprendre et à bien écrire les mots."
+      ],
+      example: "terre → terrain, terrasse, atterrir · possible → impossible (préfixe im-).",
+      tip: "Cherche le petit morceau commun : c'est la racine de la famille."
+    },
+    exercises: [
+      { type: "qcm", q: "Quel mot est de la famille de « fleur » ?", choices: ["fleuriste", "flèche", "fluide"], answer: 0, explain: "fleur → fleuriste (même racine)." },
+      { type: "qcm", q: "Le contraire de « faire » avec un préfixe :", choices: ["refaire", "défaire", "surfaire"], answer: 1, explain: "dé- indique le contraire : défaire." },
+      { type: "fill", q: "Ajoute le préfixe « re » : ___ + commencer = ___", answer: ["recommencer"], explain: "re- = à nouveau." },
+      { type: "qcm", q: "Quel est l'intrus (pas de la famille de « terre ») ?", choices: ["terrain", "terrasse", "terrible"], answer: 2, explain: "« terrible » n'a pas le sens de terre." }
+    ]
+  },
+
+  {
+    id: "fr-lecture",
+    subject: "francais",
+    title: "Lecture — je comprends ce que je lis",
+    icon: "📖",
+    lesson: {
+      intro: "Bien lire, c'est comprendre. Lis le petit texte, puis réponds aux questions.",
+      points: [
+        "Lis tout le texte, tranquillement, jusqu'au bout.",
+        "Cherche QUI, OÙ, QUAND, et ce qui se passe.",
+        "Si tu ne sais plus, relis le passage : la réponse est dans le texte.",
+        "Repère les mots importants (les noms, les actions)."
+      ],
+      example: "Astuce : souligne dans ta tête le personnage et le lieu.",
+      tip: "La bonne réponse est toujours écrite (ou cachée) dans le texte."
+    },
+    exercises: [
+      { type: "qcm", q: "Lis : « Léa a un chat noir nommé Réglisse. Il adore dormir sur le canapé rouge. » — De quelle couleur est le chat ?", choices: ["rouge", "noir", "gris"], answer: 1, explain: "« un chat noir »." },
+      { type: "qcm", q: "Même texte : où dort le chat ?", choices: ["sur le lit", "sur le canapé", "dans le jardin"], answer: 1, explain: "« dormir sur le canapé »." },
+      { type: "qcm", q: "Lis : « Ce matin, Tom a pris son vélo pour aller à l'école car il était en retard. » — Comment Tom va-t-il à l'école ?", choices: ["à pied", "en bus", "à vélo"], answer: 2, explain: "« a pris son vélo »." },
+      { type: "qcm", q: "Même texte : pourquoi prend-il le vélo ?", choices: ["il était en retard", "il pleuvait", "pour s'amuser"], answer: 0, explain: "« car il était en retard »." },
+      { type: "qcm", q: "Lis : « Dans le jardin, trois oiseaux chantent dans le grand cerisier. » — Combien d'oiseaux ?", choices: ["deux", "trois", "quatre"], answer: 1, explain: "« trois oiseaux »." }
+    ]
   }
 ];

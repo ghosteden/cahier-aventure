@@ -1,0 +1,13 @@
+import { chromium } from "playwright";
+const b=await chromium.launch();
+const page=await (await b.newContext({viewport:{width:414,height:820}})).newPage();
+await page.goto("http://localhost:8080/index.html",{waitUntil:"domcontentloaded"});
+await page.waitForSelector("#app:not([hidden])");
+await page.addStyleTag({content:"*{animation:none!important;transition:none!important}"});
+await page.fill("#login-name","test"); await page.click('button:has-text("C\'est parti")');
+await page.waitForSelector(".map-viewport"); await page.waitForTimeout(500);
+await page.click(".stone.current"); await page.waitForSelector(".node-sheet");
+await page.click('.node-sheet button:has-text("Jouer")');
+await page.waitForSelector('h2:has-text("Programme du jour")');
+await page.screenshot({path:"test/shots/skip-left.png"});
+await b.close();

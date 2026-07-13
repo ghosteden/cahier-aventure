@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Repères des planètes — L'Aventure des Savoirs</title>
+<style>
+  body { font-family:"Trebuchet MS", system-ui, sans-serif; background:#15102e; color:#fff; margin:0; padding:14px; }
+  h1 { font-size:20px; margin:0 0 8px; }
+  .row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+  select { padding:6px 10px; border-radius:8px; border:1px solid #555; background:#241a4d; color:#fff; font-size:15px; }
+  button { padding:8px 14px; border:none; border-radius:10px; background:#7c5cff; color:#fff; font-weight:bold; cursor:pointer; }
+  button.alt { background:#2ec4b6; color:#053; }
+  button.warn { background:#ff6b6b; }
+  .hint { color:#bbb; font-size:13px; line-height:1.5; }
+  .panel { background:#1e1640; border:1px solid #34295f; border-radius:12px; padding:12px; margin-top:10px; }
+  #stage { position:relative; margin-top:12px; border:1px solid #34295f; border-radius:12px; overflow:hidden; cursor:crosshair; display:inline-block; max-width:100%; }
+  #stage img { display:block; max-width:100%; height:auto; }
+  .pt { position:absolute; width:26px; height:26px; margin:-13px 0 0 -13px; border-radius:50%;
+        background:#ffd166; color:#222; font-weight:bold; font-size:13px; border:2px solid #fff;
+        display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px rgba(0,0,0,.6); cursor:grab; }
+  .pt.drag { cursor:grabbing; transform:scale(1.15); }
+  #out { width:100%; min-height:70px; font-family:monospace; font-size:13px; background:#0d0a1f; color:#9effa0;
+         border:1px solid #34295f; border-radius:8px; padding:8px; margin-top:10px; }
+  .miss { padding:30px; color:#ff9f9f; }
+</style>
+</head>
+<body>
+  <h1>🪐 Repères des planètes</h1>
+  <p class="hint">Choisis une planète, puis <b>clique sur chaque appui</b> (là où l'astronaute doit poser les pieds / atterrir),
+  <b>dans l'ordre du parcours</b>. Tu peux <b>déplacer</b> un point en le glissant. Ensuite copie la ligne du bas et donne-la-moi.</p>
+
+  <div class="panel">
+    <div class="row">
+      <label>Planète :
+        <select id="planet">
+          <option value="mercure">Mercure — dalles sur la lave</option>
+          <option value="venus">Vénus — plateformes de nuages</option>
+          <option value="lune">Lune — plateformes (Doodle Jump)</option>
+          <option value="mars">Mars — sol du désert</option>
+          <option value="jupiter">Jupiter — passerelle de la station</option>
+          <option value="saturne">Saturne — piste des anneaux</option>
+          <option value="uranus">Uranus — banquise</option>
+          <option value="neptune">Neptune — glace et vents</option>
+          <option value="pluton">Pluton — champ d'astéroïdes</option>
+        </select>
+      </label>
+      <button class="alt" id="copy">📋 Copier la ligne</button>
+      <button id="undo">↩️ Annuler le dernier</button>
+      <button class="warn" id="clear">🗑️ Tout effacer</button>
+      <span class="hint" id="count">0 point</span>
+    </div>
+  </div>
+
+  <div id="stage"></div>
+  <textarea id="out" readonly></textarea>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const stage = $("stage");
+let pts = [];          // [[x%, y%], ...] pour la planète courante
+let img = null;
+
+const KEY = "cv_planet_points";
+const all = JSON.parse(localStorage.getItem(KEY) || "{}");
+
+function load() {
+  const p = $("planet").value;
+  pts = all[p] ? all[p].slice() : [];
+  stage.innerHTML = "";
+  img = new Image();
+  img.onload = () => { stage.appendChild(img); draw(); };
+  img.onerror = () => { stage.innerHTML = '<div class="miss">Image introuvable : assets/planet-' + p + '.png</div>'; draw(); };
+  img.src = "assets/planet-" + p + ".png";
+}
+
+function draw() {
+  stage.querySelectorAll(".pt").forEach((e) => e.remove());
+  pts.forEach(([x, y], i) => {
+    const d = document.createElement("div");
+    d.className = "pt";
+    d.style.left = x + "%"; d.style.top = y + "%";
+    d.textContent = i + 1;
+    d.addEventListener("pointerdown", (e) => startDrag(e, i, d));
+    stage.appendChild(d);
+  });
+  $("count").textContent = pts.length + (pts.length > 1 ? " points" : " point");
+  const p = $("planet").value;
+  $("out").value = p + ": [" + pts.map(([x, y]) => "[" + x + ", " + y + "]").join(", ") + "]";
+  all[p] = pts.slice();
+  localStorage.setItem(KEY, JSON.stringify(all));
+}
+
+// clic sur l'image = nouveau point
+stage.addEventListener("click", (e) => {
+  if (e.target.classList.contains("pt")) return;   // clic sur un point existant : on ignore
+  if (!img || !img.parentNode) return;
+  const r = stage.getBoundingClientRect();
+  pts.push([r1((e.clientX - r.left) / r.width * 100), r1((e.clientY - r.top) / r.height * 100)]);
+  draw();
+});
+
+// déplacement d'un point
+function startDrag(e, i, el) {
+  e.preventDefault(); e.stopPropagation();
+  el.classList.add("drag");
+  const move = (ev) => {
+    const r = stage.getBoundingClientRect();
+    pts[i] = [r1((ev.clientX - r.left) / r.width * 100), r1((ev.clientY - r.top) / r.height * 100)];
+    el.style.left = pts[i][0] + "%"; el.style.top = pts[i][1] + "%";
+  };
+  const up = () => {
+    el.classList.remove("drag");
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    draw();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
+
+const r1 = (v) => Math.round(v * 10) / 10;
+
+$("planet").addEventListener("change", load);
+$("undo").addEventListener("click", () => { pts.pop(); draw(); });
+$("clear").addEventListener("click", () => { pts = []; draw(); });
+$("copy").addEventListener("click", async () => {
+  await navigator.clipboard.writeText($("out").value);
+  $("copy").textContent = "✅ Copié !";
+  setTimeout(() => ($("copy").textContent = "📋 Copier la ligne"), 1200);
+});
+
+load();
+</script>
+</body>
+</html>

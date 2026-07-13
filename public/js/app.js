@@ -73,9 +73,18 @@ window.CV = window.CV || {};
 
   /* ---------- Démarrage ---------- */
   function boot() {
-    // Service worker (hors-ligne)
+    // Service worker (hors-ligne).
+    // En local (dev), on le DÉSINSTALLE et on vide ses caches : sinon un vieux worker
+    // continue de servir d'anciens js/css et les modifications n'apparaissent jamais.
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js").catch(() => {});
+      const dev = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+      if (dev) {
+        navigator.serviceWorker.getRegistrations()
+          .then((rs) => rs.forEach((r) => r.unregister())).catch(() => {});
+        if (window.caches) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => {});
+      } else {
+        navigator.serviceWorker.register("sw.js").catch(() => {});
+      }
     }
     Install.init();
     // Boutons de navigation
@@ -117,6 +126,7 @@ window.CV = window.CV || {};
     setActiveNav(tab);
 
     if (tab === "carte") return renderCarte();
+    if (tab === "revisions") return renderRevisions();
     if (tab === "recompenses") return renderRewards();
     if (tab === "profil") return renderProfil();
     return renderCarte();
@@ -144,7 +154,7 @@ window.CV = window.CV || {};
 
     const nameInput = h("input", { id: "login-name", placeholder: "Ton prénom", autocomplete: "off" });
     // Pour l'instant une seule classe : CE2 (on en ajoutera d'autres plus tard).
-    const classInput = h("select", { id: "login-class" }, h("option", { value: "CE2" }, "CE2"));
+    const classInput = h("select", { id: "login-class" }, h("option", { value: "CE2" }, "CE2 → CM1"));
 
     // Choix de la sauvegarde (modifiable ensuite). Le Cloud n'est
     // sélectionnable que si la synchro est réellement disponible (appli en ligne).
@@ -228,23 +238,78 @@ window.CV = window.CV || {};
   let selPoint = -1;           // point sélectionné dans editPath
   let mapCam = null;           // dernière position caméra (px) — évite de recentrer pendant l'édition
   let curMapW = null;          // monde actuellement affiché (pour les actions de l'éditeur)
+  let plutonAnnounce = false;  // les 8 planètes viennent d'être jouées → annonce à l'ouverture de la carte
 
   /* Jeton du héros :
      - si le monde a une planche d'animation (w.anim) → sprite animé (idle/walk/happy/sad/jump) ;
      - sinon image hero-*.png fixe si présente (fond transparent), sinon emoji. */
-  function heroToken(w, size) {
-    const wrap = h("div", { class: "hero-token", style: { width: size + "px", height: size + "px" } });
-    if (w.anim) {
+  /* Précharge toutes les planches d'un jeu d'animations.
+     Sans ça, la 1re fois qu'on passe sur une pose encore jamais affichée (la marche, par ex.),
+     l'image n'est pas encore téléchargée et le sprite clignote — il disparaît une frame. */
+  const preloaded = [];
+  function preloadAnim(anim) {
+    if (!anim || anim._preloaded) return;
+    anim._preloaded = true;
+    Object.keys(anim).forEach((mode) => {
+      const a = anim[mode];
+      if (!a || !a.strip) return;
+      const im = new Image(); im.src = a.strip; preloaded.push(im);   // gardé en vie : sinon le GC peut l'oublier
+    });
+  }
+
+  /* Objet animé des mini-jeux (nuage qui se dissipe, astéroïde qui explose, étoile qu'on ramasse).
+     a = { strip, frames, dur, cell:[larg, haut] }. Au repos il reste figé sur la 1re image ;
+     ._play({freeze:true}) joue l'animation UNE fois et la fige sur la dernière. */
+  function propToken(a, height) {
+    preloadAnim({ o: a });
+    const ratio = a.cell ? a.cell[0] / a.cell[1] : 1;
+    const wrap = h("div", { class: "prop-token", style: { width: Math.round(height * ratio) + "px", height: height + "px" } });
+    const strip = h("div", { class: "hero-strip" });
+    strip.style.width = (a.frames * 100) + "%";
+    strip.style.backgroundImage = "url(" + a.strip + ")";
+    wrap.appendChild(strip);
+    wrap._play = (opts) => setSpriteMode(wrap, strip, { idle: a }, "idle", opts || {});
+    // Remet l'objet intact (1re image, aucune animation) — une plateforme qui repousse, par ex.
+    wrap._reset = () => { clearTimeout(wrap._animT); strip.style.animation = "none"; strip.style.transform = ""; };
+    wrap._dur = a.dur;
+    return wrap;
+  }
+
+  /* Jeton d'un véhicule des mini-jeux (le rover de Mars) : mêmes poses qu'un héros,
+     mais son jeu d'animations vient de la planète, pas du monde. size = HAUTEUR. */
+  function vehicleToken(anim, size) {
+    preloadAnim(anim);
+    const cell = anim.idle && anim.idle.cell;
+    const wide = cell ? Math.round(size * cell[0] / cell[1]) : size;
+    const wrap = h("div", { class: "hero-token", style: { width: wide + "px", height: size + "px" } });
+    const strip = h("div", { class: "hero-strip" });
+    wrap.appendChild(strip);
+    wrap._setMode = (mode, o) => setSpriteMode(wrap, strip, anim, mode, o || {});
+    wrap._setMode("idle");
+    return wrap;
+  }
+
+  /* opts.map = true → utilise w.mapAnim si le monde en a une (l'espace se déplace en fusée
+     sur la carte, mais en astronaute dans les mini-jeux des planètes). */
+  function heroToken(w, size, opts) {
+    opts = opts || {};
+    const anim = (opts.map && w.mapAnim) || w.anim;
+    // Les cellules ne sont pas toujours carrées (la fusée fait 229×111) : on garde le ratio.
+    const cell = anim && anim.idle && anim.idle.cell;
+    const wide = cell ? Math.round(size * cell[0] / cell[1]) : size;
+    const wrap = h("div", { class: "hero-token", style: { width: wide + "px", height: size + "px" } });
+    if (anim) {
+      preloadAnim(anim);
       const strip = h("div", { class: "hero-strip" });
       const emo = h("div", { class: "hero-emo", style: { fontSize: Math.round(size * 0.82) + "px", display: "none" } }, w.emoji);
       wrap.appendChild(strip); wrap.appendChild(emo);
       // si une planche est introuvable, on retombe sur l'emoji
       const probe = new Image();
       probe.onerror = () => { strip.style.display = "none"; emo.style.display = "block"; };
-      probe.src = w.anim.idle.strip;
-      wrap._setMode = (mode, opts) => setHeroMode(wrap, strip, w, mode, opts || {});
+      probe.src = anim.idle.strip;
+      wrap._setMode = (mode, o) => setSpriteMode(wrap, strip, anim, mode, o || {});
       wrap._setMode("idle");
-      setHeroFacing(wrap, true);   // par défaut le dino regarde à droite (vers l'avant du parcours)
+      setHeroFacing(wrap, true);   // par défaut le sprite regarde à droite (vers l'avant du parcours)
       return wrap;
     }
     const img = h("img", { class: "hero-img", src: w.sprite.replace("sprite-", "hero-"), alt: "" });
@@ -254,26 +319,34 @@ window.CV = window.CV || {};
     return wrap;
   }
 
-  /* Applique une animation au sprite. opts.once = jouer une fois puis revenir à opts.then (def. idle). */
-  function setHeroMode(wrap, strip, w, mode, opts) {
-    const a = w.anim[mode] || w.anim.idle;
-    strip.style.width = (a.frames * 100) + "%";
-    strip.style.backgroundImage = "url(" + a.strip + ")";
-    strip.style.animation = "none";
-    void strip.offsetWidth;                       // redémarre l'animation proprement
-    const count = opts.once ? "1" : "infinite";
-    // idle (ou anim avec yoyo:true) joué en aller-retour pour éviter le saut de la dernière à la première frame
-    const dir = (!opts.once && (mode === "idle" || a.yoyo)) ? " alternate" : "";
-    strip.style.animation = "spritestep " + a.dur + "s steps(" + a.frames + ") " + count + dir;
-    clearTimeout(wrap._animT);
-    if (opts.once) {
-      wrap._animT = setTimeout(() => setHeroMode(wrap, strip, w, opts.then || "idle", {}), a.dur * 1000);
-    }
-  }
-
   /* Oriente le sprite. Le dessin regarde à DROITE par défaut : faceRight=true => pas de miroir. */
   function setHeroFacing(tok, faceRight) {
     tok.style.transform = faceRight ? "scaleX(1)" : "scaleX(-1)";
+  }
+
+  /* Oriente un sprite qui suit la courbe du chemin : la pointe de la fusée pointe vers là où elle va,
+     sur 360° (elle suit les orbites, y compris vers le haut et vers le bas).
+     dxPx/dyPx = direction en PIXELS (pas en %) : la carte n'est pas carrée, l'angle serait faux sinon.
+     On accumule l'angle au lieu de le remettre à plat, pour qu'elle tourne par le plus court chemin
+     et ne fasse jamais de tête-à-queue à la traversée de ±180°. */
+  function setHeroAngle(tok, dxPx, dyPx, upright) {
+    if (Math.hypot(dxPx, dyPx) < 1) return;                 // tronçon trop court : on garde l'angle courant
+    const target = Math.atan2(dyPx, dxPx) * 180 / Math.PI;
+    // Un personnage (le surfeur de Saturne) ne doit JAMAIS se retrouver la tête en bas :
+    // quand la pente le fait partir vers la gauche, on le retourne au lieu de continuer à pivoter.
+    if (upright) {
+      const flip = target > 90 || target < -90;
+      tok.style.transform = "rotate(" + target.toFixed(1) + "deg)" + (flip ? " scaleY(-1)" : "");
+      return;
+    }
+    // La fusée, elle, tourne bien sur 360° : on cumule l'angle pour qu'elle prenne toujours
+    // le plus court chemin et ne fasse pas de tête-à-queue au passage de ±180°.
+    const prev = tok._deg || 0;
+    let delta = (target - prev) % 360;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    tok._deg = prev + delta;
+    tok.style.transform = "rotate(" + tok._deg.toFixed(1) + "deg)";
   }
 
   function updatePlacePanel() {
@@ -426,18 +499,6 @@ window.CV = window.CV || {};
   function svgEl(str) { const d = document.createElement("div"); d.innerHTML = str.trim(); return d.firstChild; }
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
-  function spriteStyle(w, size) {
-    const g = w.grid || { cols: 1, rows: 1, col: 0, row: 0 };
-    const px = g.cols > 1 ? (g.col / (g.cols - 1)) * 100 : 0;
-    const py = g.rows > 1 ? (g.row / (g.rows - 1)) * 100 : 0;
-    return {
-      backgroundImage: "url(" + w.sprite + ")",
-      backgroundSize: (g.cols * 100) + "% " + (g.rows * 100) + "%",
-      backgroundPosition: px + "% " + py + "%",
-      width: size + "px", height: size + "px"
-    };
-  }
-
   function stoneSVG(kind) {
     const grad = {
       open: ["#d9cba6", "#9c8758"], done: ["#e0cf8e", "#b08a2f"],
@@ -462,7 +523,13 @@ window.CV = window.CV || {};
     const state = Store.current();
     const curLevel = state.currentDay || 1;
     const curWorldIndex = CV.worldIndexOfLevel(curLevel);
-    if (mapViewIndex === null || mapViewIndex > curWorldIndex) mapViewIndex = curWorldIndex;
+    // À l'ouverture, on revient sur le monde où se trouve le héros (sauvegardé), pas forcément
+    // le dernier débloqué : si on rejoue un ancien monde, la carte y reste.
+    if (mapViewIndex === null) {
+      const hw = state.heroWorld;
+      mapViewIndex = (hw != null && hw <= curWorldIndex) ? hw : curWorldIndex;
+    }
+    if (mapViewIndex > curWorldIndex) mapViewIndex = curWorldIndex;
     const w = CV.worldByIndex(mapViewIndex);
     curMapW = w;
     UI.applyTheme(w.theme);
@@ -503,6 +570,21 @@ window.CV = window.CV || {};
     c.appendChild(wrap);
 
     setupMap(viewport, layer, w, mapViewIndex, curLevel, curWorldIndex, state);
+
+    if (plutonAnnounce) { plutonAnnounce = false; setTimeout(showPlutonUnlocked, 500); }
+  }
+
+  /* Les 8 planètes ont été jouées : Pluton s'ouvre. */
+  function showPlutonUnlocked() {
+    UI.confetti();
+    const backdrop = h("div", { class: "sheet-backdrop", onclick: closeSheet });
+    const sheet = h("div", { class: "node-sheet center" },
+      h("div", { style: { fontSize: "62px" } }, "🪐"),
+      h("h2", {}, "Pluton est débloquée !"),
+      h("p", { class: "muted" }, "Tu as exploré les 8 planètes du système solaire. Le dernier voyage t'attend, tout au bout : Pluton !"),
+      h("button", { class: "btn big gold block mt", onclick: closeSheet }, "En route ! 🚀"));
+    appEl.appendChild(backdrop);
+    appEl.appendChild(sheet);
   }
 
   function setupMap(viewport, layer, w, worldIndex, curLevel, curWorldIndex, state) {
@@ -518,18 +600,44 @@ window.CV = window.CV || {};
 
     const worldDone = worldIndex < curWorldIndex;
     const curNodeIdx = worldIndex === curWorldIndex ? CV.nodeIndexOfLevel(curLevel) : (worldDone ? 8 : -1);
+    // Monde en ordre libre (l'Espace) : pas de pierres ni de chemins — ce sont les planètes
+    // dessinées sur la carte qu'on clique, et la fusée y va en parabole.
+    const freeOrder = !!w.freeOrder;
+    // Diamètre de la zone cliquable d'une planète, en px (jamais moins que le doigt d'un enfant).
+    const hitPx = (i) => Math.max(46, ((w.hits && w.hits[i]) || 5) / 100 * lw);
 
-    // Pierres
+    // Pierres (mondes classiques) / planètes cliquables (Espace)
     w.nodes.forEach((n, i) => {
       const level = CV.levelNumber(worldIndex, i);
-      const isBoss = i === 8;
+      const isBoss = i === CV.BOSS_NODE;
       const dp = (state.dayProgress || {})[level];
       const done = dp && dp.done;
-      const stars = done ? (dp.stars || 1) : 0;
-      const isCurrent = level === curLevel;
-      const locked = level > curLevel;
+      const skipped = !!(done && dp.skipped);
+      const stars = done ? (dp.stars || 0) : 0;
+      const isCurrent = !freeOrder && level === curLevel;
+      const locked = !CV.levelUnlocked(state, level);
       // En mode repositionnement, les pierres sont remplacées par des poignées déplaçables.
       if (placeMode && editNodes) return;
+
+      if (freeOrder) {
+        // Halo transparent posé sur la planète : on voit la planète, pas une pierre.
+        // Pluton verrouillée reste visible (cadenas) pour montrer l'objectif.
+        const d = hitPx(i);
+        const cls = "planet-hit" + (locked ? " locked" : (done && !skipped ? " done" : "")) + (skipped ? " skipped" : "");
+        const hit = h("div", { class: cls, style: { left: n[0] + "%", top: n[1] + "%", width: d + "px", height: d + "px" } });
+        if (locked) hit.appendChild(h("div", { class: "ph-badge" }, "🔒"));
+        else if (skipped) hit.appendChild(h("div", { class: "ph-badge" }, "⏭️"));
+        else if (done) hit.appendChild(h("div", { class: "ph-badge" }, stars > 0 ? "⭐".repeat(stars) : "✔️"));
+        hit.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (mapDragged) return;
+          if (locked) { UI.toast("🔒 Pluton s'ouvrira quand les 8 planètes seront jouées (" + CV.planetsPlayed(state) + "/8)", 3200); return; }
+          openNodeSheet(level);
+        });
+        layer.appendChild(hit);
+        return;
+      }
+
       // Hors outil de placement : on n'affiche que les pierres déverrouillées.
       // En mode placement : on affiche TOUT (repère pour tracer les chemins).
       if (locked && !placeMode) return;
@@ -541,7 +649,7 @@ window.CV = window.CV || {};
       const stone = h("div", { class: cls, style: { left: n[0] + "%", top: n[1] + "%" } });
       stone.appendChild(stoneSVG(kind));
       stone.appendChild(h("div", { class: "stone-num" }, locked ? "🔒" : (isBoss ? "👑" : String(i + 1))));
-      if (done) stone.appendChild(h("div", { class: "stone-stars" }, "⭐".repeat(stars)));
+      if (done && stars) stone.appendChild(h("div", { class: "stone-stars" }, "⭐".repeat(stars)));
       stone.addEventListener("click", (e) => {
         e.stopPropagation();
         if (mapDragged) return;
@@ -555,7 +663,13 @@ window.CV = window.CV || {};
     // Le DERNIER point d'un tracé = la position de repos du dino à côté de la pierre d'arrivée.
     const parsePts = (raw) => { const out = []; let pend = false; (raw || []).forEach((it) => {
       if (it === "jump") { pend = true; return; } out.push({ pt: it, jump: pend }); pend = false; }); return out; };
-    const restPos = (i) => { const pp = (w.paths && i - 1 >= 0) ? parsePts(w.paths[i - 1]) : []; return pp.length ? pp[pp.length - 1].pt : w.nodes[i]; };
+    const restPos = (i) => {
+      const inc = (w.paths && i - 1 >= 0) ? parsePts(w.paths[i - 1]) : [];
+      if (inc.length) return inc[inc.length - 1].pt;           // point de repos = fin du chemin entrant
+      const out = (w.paths && w.paths[i]) ? parsePts(w.paths[i]) : [];
+      if (out.length) return out[0].pt;                        // sinon (1re pierre) : 1er point du chemin sortant, à côté de la pierre
+      return w.nodes[i];
+    };
     const segForward = (a) => { const pp = parsePts(w.paths && w.paths[a]); return pp.length ? pp.map((e) => ({ to: e.pt, jump: e.jump })) : [{ to: w.nodes[a + 1], jump: false }]; };
     const segBackward = (a) => { const pp = parsePts(w.paths && w.paths[a - 1]); if (!pp.length) return [{ to: w.nodes[a - 1], jump: false }];
       // On rejoint d'abord le DERNIER point du chemin (juste avant l'obstacle), puis on parcourt à l'envers.
@@ -567,11 +681,16 @@ window.CV = window.CV || {};
       else for (let a = fromIdx; a > toIdx; a--) legs.push.apply(legs, segBackward(a));
       return legs; };
 
-    // Personnage : posé à sa position de repos (à côté de la pierre courante)
-    const heroNodeIdx = curNodeIdx >= 0 ? curNodeIdx : 0;
+    // Personnage : posé à sa position de repos (à côté de la pierre où il se tient).
+    // Cette position est SAUVEGARDÉE (state.heroNode) : si on rejoue une vieille pierre,
+    // le héros y revient et y reste, au lieu de sauter sur la dernière pierre atteinte.
+    const savedNode = (state.heroNode || {})[worldIndex];
+    const heroNodeIdx = savedNode != null ? savedNode : (curNodeIdx >= 0 ? curNodeIdx : 0);
     const heroStart = restPos(heroNodeIdx);
-    const tok = heroToken(w, 64);
-    const hero = h("div", { class: "hero-sprite" + (w.anim ? " anim" : ""), style: { left: heroStart[0] + "%", top: heroStart[1] + "%" } }, tok);
+    const tok = heroToken(w, freeOrder ? 46 : 64, { map: true });   // monde Espace : c'est la fusée qui voyage sur la carte
+    const mapAnim = w.mapAnim || w.anim || {};     // la fusée n'a ni « happy » ni « sad » : on lit la bonne planche
+    const hero = h("div", { class: "hero-sprite" + (w.anim ? " anim" : "") + (freeOrder ? " rocket" : ""),
+      style: { left: heroStart[0] + "%", top: heroStart[1] + "%" } }, tok);
     layer.appendChild(hero);
 
     // ---- Caméra : translation de la map (centrée sur un point, avec pan animé possible) ----
@@ -585,15 +704,17 @@ window.CV = window.CV || {};
     const walkLegs = (legs, fromPt) => {
       let cur = fromPt;
       const step = (idx) => {
-        if (idx >= legs.length) { setHeroFacing(tok, true); tok._setMode("idle"); return; }
+        // La fusée garde l'inclinaison de sa dernière trajectoire ; les autres héros se remettent face à droite.
+        if (idx >= legs.length) { if (!w.mapRotate) setHeroFacing(tok, true); tok._setMode("idle"); return; }
         const pt = legs[idx].to, dx = pt[0] - cur[0], dy = pt[1] - cur[1];
-        if (Math.abs(dx) > 0.3) setHeroFacing(tok, dx > 0);
+        if (w.mapRotate) setHeroAngle(tok, dx / 100 * lw, dy / 100 * lh);
+        else if (Math.abs(dx) > 0.3) setHeroFacing(tok, dx > 0);
         const next = () => { cur = pt; step(idx + 1); };
         if (legs[idx].jump) {
           // Saut : le dino s'accroupit (s'arrête) puis bondit en suivant une parabole.
           tok._setMode("jump", { once: true, then: "walk" });
           hero.style.transition = "none";
-          const durMs = (w.anim.jump && w.anim.jump.dur ? w.anim.jump.dur : 0.7) * 1000;
+          const durMs = (mapAnim.jump && mapAnim.jump.dur ? mapAnim.jump.dur : 0.7) * 1000;
           const crouchMs = Math.min(180, durMs * 0.3), arcMs = durMs - crouchMs;
           const peak = Math.max(5, Math.min(11, Math.hypot(dx, dy) * 1.2));  // hauteur de la cloche
           setTimeout(() => {
@@ -619,18 +740,167 @@ window.CV = window.CV || {};
     };
 
     let heroVisualIdx = heroNodeIdx;   // nœud où se trouve visuellement le héros
+    let userDragging = false;          // pendant qu'on fait glisser la carte, la caméra ne suit plus la fusée
 
-    // Le héros vient-il d'avancer d'une pierre (niveau réussi) ? -> joie puis marche le long du chemin
+    if (freeOrder) {
+      /* ---- ESPACE : la fusée ne s'arrête jamais. ----
+         Au repos elle ORBITE autour de sa planète ; pour en rejoindre une autre elle décrit une
+         PARABOLE d'une orbite à l'autre. Réacteurs toujours allumés, pointe toujours dans le sens
+         de la marche. Tout est piloté image par image (requestAnimationFrame) : les transitions CSS
+         ne savent pas suivre une courbe. */
+      const aspect = lw / lh;   // la carte n'est pas carrée : 1 % en x ≠ 1 % en y
+      const ORB_FLAT = 0.55;    // orbite un peu écrasée : ça donne de la perspective
+      const SPIN = 1.15;        // vitesse d'orbite (rad/s)
+
+      // Orbite : un anneau juste au-delà du bord de la planète.
+      const orbRx = (i) => Math.max(3.6, hitPx(i) / lw * 100 * 0.85);          // en % de largeur
+      const orbRy = (i) => orbRx(i) * aspect * ORB_FLAT;                        // en % de hauteur
+      const orbPos = (i, a) => [w.nodes[i][0] + orbRx(i) * Math.cos(a), w.nodes[i][1] - orbRy(i) * Math.sin(a)];
+      // Tangente à l'orbite, en PIXELS (l'angle du sprite se calcule en pixels, pas en %).
+      const orbTan = (i, a) => [-orbRx(i) * Math.sin(a) / 100 * lw, -orbRy(i) * Math.cos(a) / 100 * lh];
+
+      /* Les deux bouts de la fronde. On balaie l'orbite et on garde l'angle qui aligne le mieux la
+         TANGENTE avec la direction du voyage — l'ellipse est aplatie, il n'y a pas de formule simple.
+         · éjection : la tangente vise la planète d'en face → la fusée est lâchée dans l'axe.
+         · capture  : la tangente prolonge la direction d'approche → elle s'enroule sans crocheter.
+         Sans ça, elle arriverait à contresens de l'orbite et devrait faire demi-tour. */
+      const bestAngle = (i, score) => {
+        let best = 0, bestDot = -2;
+        for (let k = 0; k < 180; k++) {
+          const a = k / 180 * Math.PI * 2;
+          const t = orbTan(i, a), tn = Math.hypot(t[0], t[1]) || 1;
+          const v = score(orbPos(i, a)), vn = Math.hypot(v[0], v[1]) || 1;
+          const dot = (t[0] / tn) * (v[0] / vn) + (t[1] / tn) * (v[1] / vn);
+          if (dot > bestDot) { bestDot = dot; best = a; }
+        }
+        return best;
+      };
+      const pctToPx = (a, b) => [(b[0] - a[0]) / 100 * lw, (b[1] - a[1]) / 100 * lh];
+      // Où quitter l'orbite i pour filer vers la planète target.
+      const launchAngle = (i, target) => bestAngle(i, (p) => pctToPx(p, w.nodes[target]));
+      // Où raccrocher l'orbite de la planète i quand on arrive du point `from`.
+      const captureAngle = (i, from) => bestAngle(i, (p) => pctToPx(from, p));
+
+      const WINDUP = 2.3;       // pendant qu'elle prend son élan, l'orbite s'accélère (effet fronde)
+
+      let node = heroNodeIdx;   // planète autour de laquelle elle tourne
+      let ang = 0;              // position sur l'orbite
+      let flight = null;        // vol en cours, ou null
+      let pending = null;       // { to, launchAt } : élan en cours avant l'éjection
+      let heading = [1, 0];     // cap actuel (vecteur unitaire, en PIXELS) — sert à repartir sans à-coup
+
+      // La caméra suit la fusée — sauf si le joueur fait glisser la carte, ou s'il édite les pierres.
+      const camSnap = (pt) => { if (userDragging || placeMode) return; [tx, ty] = camFor(pt); layer.style.transition = "none"; apply(); mapCam = [tx, ty]; };
+      const place = (pt, dxPx, dyPx) => {
+        hero.style.left = pt[0] + "%"; hero.style.top = pt[1] + "%";
+        const n = Math.hypot(dxPx, dyPx);
+        if (n > 0.001) heading = [dxPx / n, dyPx / n];       // on retient le cap : le prochain décollage part de là
+        setHeroAngle(tok, dxPx, dyPx);
+      };
+      // Un vecteur unitaire de pixels, exprimé en % de la carte (x et y n'ont pas la même échelle).
+      const pxDirToPct = (v, len) => [v[0] * len / lw * 100, v[1] * len / lh * 100];
+
+      hero.style.transition = "none";
+      tok._setMode("walk");     // réacteurs allumés en permanence — jamais d'« idle »
+      if (placeMode && mapCam) { tx = clamp(mapCam[0], minTx, 0); ty = clamp(mapCam[1], minTy, 0); apply(); }
+      else camSnap(w.nodes[node]);
+
+      let last = 0;
+      const frame = (now) => {
+        if (!hero.isConnected) return;                       // écran quitté : la boucle s'éteint
+        const dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
+        last = now;
+        if (flight) {
+          flight.t = Math.min(1, flight.t + (flight.dur ? dt / flight.dur : 1));
+          // Accélération au décollage / décélération à l'approche, mais SANS arrêt : la vitesse
+          // d'arrivée reste celle de l'orbite, sinon la fusée « pilerait » avant de tourner.
+          const t = flight.t, e = t * t * (3 - 2 * t) * 0.85 + t * 0.15;
+          const u = 1 - e, p0 = flight.p0, p1 = flight.p1, p2 = flight.p2, p3 = flight.p3;
+          // Bézier CUBIQUE : ses deux tangentes sont imposées (celle de l'orbite de départ et
+          // celle de l'orbite d'arrivée). La fusée s'échappe et s'insère sans jamais pivoter sur place.
+          const bez = (a, b, c, d) => u * u * u * a + 3 * u * u * e * b + 3 * u * e * e * c + e * e * e * d;
+          const der = (a, b, c, d) => 3 * u * u * (b - a) + 6 * u * e * (c - b) + 3 * e * e * (d - c);
+          const pt = [bez(p0[0], p1[0], p2[0], p3[0]), bez(p0[1], p1[1], p2[1], p3[1])];
+          const dx = der(p0[0], p1[0], p2[0], p3[0]), dy = der(p0[1], p1[1], p2[1], p3[1]);
+          place(pt, dx / 100 * lw, dy / 100 * lh);
+          camSnap([flight.c0[0] + (flight.c1[0] - flight.c0[0]) * e,
+                   flight.c0[1] + (flight.c1[1] - flight.c0[1]) * e]);
+          if (flight.t >= 1) { node = flight.to; ang = flight.ang; flight = null; }
+        } else {
+          // En orbite. Si une planète est visée, on tourne PLUS VITE jusqu'à l'angle d'éjection :
+          // la fusée prend son élan et part dans l'axe, sans jamais pivoter sur place.
+          ang += SPIN * (pending ? WINDUP : 1) * dt;
+          const t = orbTan(node, ang);
+          place(orbPos(node, ang), t[0], t[1]);
+          if (pending && ang >= pending.launchAt) { const to = pending.to; pending = null; beginFlight(to); }
+        }
+        requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+
+      /* L'éjection elle-même. Elle part dans le CAP ACTUEL de la fusée — qui, grâce à l'élan pris
+         ci-dessus, vise déjà la planète — et arrive dans le SENS DE L'ORBITE d'accueil : aucune
+         rotation sur place, ni au départ ni à l'arrivée. */
+      const beginFlight = (target) => {
+        const from = flight ? [parseFloat(hero.style.left), parseFloat(hero.style.top)] : orbPos(node, ang);
+        const aIn = captureAngle(target, from);            // on raccroche l'orbite dans son sens de rotation
+        const p3 = orbPos(target, aIn);
+        const dist = Math.hypot((p3[0] - from[0]) / 100 * lw, (p3[1] - from[1]) / 100 * lh) || 1;
+        // Poignées de la cubique : une partie du trajet dans le cap de départ, puis dans le cap
+        // d'arrivée. Plus elles sont longues, plus la courbe est ample.
+        const pull = dist * 0.55;
+        const tIn = orbTan(target, aIn);                    // tangente de l'orbite d'accueil (px)
+        const tn = Math.hypot(tIn[0], tIn[1]) || 1;
+        const d0 = pxDirToPct(heading, pull);
+        const d1 = pxDirToPct([tIn[0] / tn, tIn[1] / tn], pull);
+        flight = { p0: from, p1: [from[0] + d0[0], from[1] + d0[1]],
+                   p2: [p3[0] - d1[0], p3[1] - d1[1]], p3: p3, to: target, ang: aIn, t: 0,
+                   dur: clamp(dist / 380, 1.0, 2.4),
+                   c0: (flight ? flight.c1 : w.nodes[node]), c1: w.nodes[target] };
+        heroVisualIdx = target;
+      };
+
+      /* Viser une planète : la fusée ne pique pas droit dessus. Elle continue de tourner (plus vite)
+         jusqu'au point de son orbite d'où elle est lancée pile dans la bonne direction — la fronde. */
+      mapAPI = {
+        walkTo: (target) => {
+          if (target < 0 || target === (flight ? flight.to : node)) return;
+          if (flight) { beginFlight(target); return; }       // déjà en vol : on redirige tout de suite
+          const aOut = launchAngle(node, target);
+          // Combien de tour reste-t-il à faire avant d'y être ? (l'angle n'est jamais remis à plat)
+          let wait = (aOut - ang) % (Math.PI * 2);
+          if (wait < 0.12) wait += Math.PI * 2;              // trop court pour s'aligner : un tour de plus
+          pending = { to: target, launchAt: ang + wait };
+        }
+      };
+
+      // Elle vient de terminer une planète alors qu'elle tournait autour d'une autre :
+      // on la remet sur son ancienne orbite et on la fait décoller (le voyage se voit).
+      const prevN = lastHeroNode[worldIndex];
+      lastHeroNode[worldIndex] = heroNodeIdx;
+      if (prevN != null && prevN >= 0 && prevN !== heroNodeIdx && w.nodes[prevN]) {
+        node = prevN;
+        // On la place déjà en position de tir : le voyage démarre sans faire poireauter l'enfant.
+        ang = launchAngle(prevN, heroNodeIdx);
+        const t0 = orbTan(prevN, ang), n0 = Math.hypot(t0[0], t0[1]) || 1;
+        heading = [t0[0] / n0, t0[1] / n0];
+        camSnap(w.nodes[prevN]);
+        beginFlight(heroNodeIdx);
+      }
+    } else {
+
+    // Le héros vient-il de changer de pierre ? -> il parcourt le chemin (en avant comme en arrière,
+    // pour revenir sur une pierre qu'on rejoue).
     const prev = lastHeroNode[worldIndex];
-    const advanced = tok._setMode && prev != null && prev >= 0 && curNodeIdx > prev && w.nodes[prev];
-    lastHeroNode[worldIndex] = curNodeIdx;
-    if (advanced) {
+    const moved = tok._setMode && prev != null && prev >= 0 && prev !== heroNodeIdx && w.nodes[prev];
+    lastHeroNode[worldIndex] = heroNodeIdx;
+    if (moved) {
       const startPt = restPos(prev);
       hero.style.transition = "none"; hero.style.left = startPt[0] + "%"; hero.style.top = startPt[1] + "%";
       setCam(startPt, 0); void hero.offsetWidth;
       tok._setMode("happy", { once: true });
-      const legs = buildRoute(prev, curNodeIdx);
-      setTimeout(() => walkLegs(legs, startPt), (w.anim.happy.dur || 0.6) * 1000);
+      const legs = buildRoute(prev, heroNodeIdx);
+      setTimeout(() => walkLegs(legs, startPt), ((mapAnim.happy && mapAnim.happy.dur) || 0.6) * 1000);
     } else if (placeMode && mapCam) {
       // en mode édition, on garde la position de caméra (pas de recentrage à chaque retouche)
       tx = clamp(mapCam[0], minTx, 0); ty = clamp(mapCam[1], minTy, 0); apply();
@@ -648,6 +918,8 @@ window.CV = window.CV || {};
         walkLegs(legs, fromPt);
       }
     };
+
+    }
 
     // Outil de placement / éditeur de chemins
     if (placeMode) {
@@ -735,13 +1007,13 @@ window.CV = window.CV || {};
       if (!dragging) return;
       const dx = e.clientX - sx, dy = e.clientY - sy;
       if (!captured && Math.abs(dx) + Math.abs(dy) > 6) {
-        captured = true; mapDragged = true;
+        captured = true; mapDragged = true; userDragging = true;   // la fusée cesse d'entraîner la caméra
         viewport.classList.add("dragging");
         try { viewport.setPointerCapture(e.pointerId); } catch (_) {}
       }
       if (captured) { tx = clamp(stx + dx, minTx, 0); ty = clamp(sty + dy, minTy, 0); apply(); mapCam = [tx, ty]; }
     });
-    const end = () => { dragging = false; captured = false; viewport.classList.remove("dragging"); };
+    const end = () => { dragging = false; captured = false; userDragging = false; viewport.classList.remove("dragging"); };
     viewport.addEventListener("pointerup", end);
     viewport.addEventListener("pointercancel", end);
     viewport.addEventListener("pointerleave", end);
@@ -753,24 +1025,28 @@ window.CV = window.CV || {};
     if (mapAPI && mapAPI.walkTo) mapAPI.walkTo(CV.nodeIndexOfLevel(level));
     const state = Store.current();
     const lv = CV.getLevel(level);
-    const mod = lv.moduleId ? CV.getModule(lv.moduleId) : null;
     const dp = (state.dayProgress || {})[level];
     const done = dp && dp.done;
+    const pl = CV.planetForLevel ? CV.planetForLevel(level) : null;
+    const reward = !!(pl && pl.mode === "reward");
 
     const backdrop = h("div", { class: "sheet-backdrop", onclick: closeSheet });
-    const subj = mod ? ({ francais: "Français", maths: "Maths", sciences: "Sciences", culture: "Culture" }[mod.subject] || "") : "";
+    // Le sous-titre énumère les étapes réellement au programme de la journée.
+    const plan = lv.isBoss ? null : CV.dayPlan(level);
+    const etapes = plan ? plan.steps.map((s) => s.label).join(" · ") : "";
     const sheet = h("div", { class: "node-sheet" },
+      // Pluton occupe la case du boss mais n'est pas un combat : c'est la récompense finale.
       h("div", { class: "ns-head" },
-        h("div", { class: "ns-emoji" }, lv.isBoss ? "👑" : (mod ? mod.icon : "✏️")),
+        h("div", { class: "ns-emoji" }, reward ? "🚀" : (lv.icon || "✏️")),
         h("div", { style: { flex: "1" } },
-          h("div", { class: "pill" }, lv.isBoss ? "BOSS du monde" : (subj + (mod && mod.isDictee ? " · Dictée" : ""))),
+          h("div", { class: "pill" }, reward ? "RÉCOMPENSE" : (lv.isBoss ? "BOSS du monde" : (etapes || lv.subtitle || ""))),
           h("div", { style: { fontWeight: "bold", fontSize: "17px", marginTop: "4px" } },
-            lv.isBoss ? "Le Grand Défi" : (mod ? mod.title : "Niveau")))),
-      done ? h("p", { class: "muted" }, "Déjà réussi " + "⭐".repeat(dp.stars || 1) + " — tu peux rejouer pour faire mieux.") : null,
+            reward ? "Pluton — vol libre" : (lv.isBoss ? "Le Grand Défi" : (lv.title || "Niveau")))),
+        reward ? null
+          : h("button", { class: "skip-mini", title: "Passer sans faire (0 étoile)", onclick: () => { closeSheet(); skipLevel(level); } }, "Passer ⏭️")),
+      done && !reward ? h("p", { class: "muted" }, "Déjà réussi " + "⭐".repeat(dp.stars || 1) + " — tu peux rejouer pour faire mieux.") : null,
       h("button", { class: "btn big block mt", onclick: () => { closeSheet(); openLevel(level); } },
-        lv.isBoss ? "⚔️ Affronter le boss" : (done ? "↻ Rejouer" : "▶️ Jouer")),
-      h("button", { class: "btn debug block mt", onclick: () => { closeSheet(); skipLevel(level); } },
-        "🔓 Débloquer (test)")
+        reward ? "🚀 C'est parti !" : (lv.isBoss ? "⚔️ Affronter le boss" : (done ? "↻ Rejouer" : "▶️ Jouer")))
     );
     appEl.appendChild(backdrop);
     appEl.appendChild(sheet);
@@ -779,12 +1055,14 @@ window.CV = window.CV || {};
     appEl.querySelectorAll(".node-sheet, .sheet-backdrop").forEach((e) => e.remove());
   }
 
-  /* Termine un niveau instantanément (bouton de test). */
+  /* Passer un niveau sans le faire : il compte comme terminé mais SANS étoile.
+     (On pourra le rejouer plus tard pour gagner ses étoiles.) */
   function skipLevel(level) {
+    if (!confirm("Passer ce niveau sans le faire ?\nTu ne gagneras aucune étoile (tu pourras le refaire plus tard pour les gagner).")) return;
     const lv = CV.getLevel(level);
-    if (lv.isBoss) { finishLevel(lv, 3, null, null, true); return; }
+    if (lv.isBoss) { finishLevel(lv, 0, null, null, true); return; }
     daySession = null;
-    finishDay(lv, 3, null, null);
+    finishDay(lv, 0, null, null, true);
   }
 
   /* ---------- Ouvrir un niveau ---------- */
@@ -792,10 +1070,327 @@ window.CV = window.CV || {};
     const lv = CV.getLevel(level);
     if (!lv) return goto("#/carte");
     const state = Store.current();
-    if (lv.level > (state.currentDay || 1)) { goto("#/carte"); return; }
+    if (!CV.levelUnlocked(state, level)) { goto("#/carte"); return; }
     UI.applyTheme(lv.theme);
+    // Monde Espace : mini-jeu de la planète. À tester AVANT le boss : Pluton occupe la case du
+    // boss, mais ce n'est pas un combat — c'est le jeu de récompense.
+    const planet = CV.planetForLevel ? CV.planetForLevel(level) : null;
+    if (planet && planet.mode === "reward") return playReward(lv, planet);
     if (lv.isBoss) return playBoss(lv);
+    if (planet && planet.points && planet.points.length > 1) return playPlanet(lv, planet);
     renderDayProgram(level);
+  }
+
+  /* ---------- Pluton : jeu de récompense (aucune question, aucun échec) ----------
+     La fusée suit le doigt (ou les flèches). Les objets arrivent par la droite : les gemmes et
+     les étoiles se ramassent, les astéroïdes explosent au contact. À la fin : 3 étoiles. */
+  function playReward(lv, p) {
+    const w = CV.worldByIndex(4);
+    const c = screen();
+    c.appendChild(backBar("#/carte", "Carte"));
+    c.appendChild(h("h2", { class: "section-title" }, p.emoji + " " + p.name));
+
+    const rocket = vehicleToken(w.mapAnim, 40);
+    const ship = h("div", { class: "reward-ship" }, rocket);
+    const stage = h("div", { class: "planet-stage reward-stage", style: { backgroundImage: "url(" + p.bg + ")" } }, ship);
+    c.appendChild(h("div", { class: "planet-scene" }, stage));
+
+    const hud = h("div", { class: "planet-steps" });
+    c.appendChild(hud);
+    c.appendChild(h("p", { class: "center muted planet-fact" }, "💡 " + p.fact));
+    c.appendChild(h("p", { class: "center muted", style: { marginTop: "-4px", fontSize: "13px" } },
+      "Glisse ton doigt (ou les flèches ↑ ↓) pour piloter."));
+
+    let shipY = 50, score = 0, running = true, last = 0, spawnAt = 0;
+    const items = [];                       // { el, x, y, speed, kind, spec, dead }
+    const remaining = () => Math.max(0, Math.ceil(p.duration - elapsed / 1000));
+    let elapsed = 0;
+
+    const place = () => { ship.style.top = shipY + "%"; };
+    place();
+
+    // ---- Pilotage : doigt/souris sur la scène, ou flèches du clavier ----
+    const aim = (ev) => {
+      const r = stage.getBoundingClientRect();
+      shipY = clamp(((ev.clientY - r.top) / r.height) * 100, 8, 92);
+      place();
+    };
+    stage.addEventListener("pointerdown", aim);
+    stage.addEventListener("pointermove", (e) => { if (e.buttons || e.pointerType === "touch") aim(e); });
+    const onKey = (e) => {
+      if (e.key === "ArrowUp") { shipY = clamp(shipY - 7, 8, 92); place(); }
+      else if (e.key === "ArrowDown") { shipY = clamp(shipY + 7, 8, 92); place(); }
+    };
+    window.addEventListener("keydown", onKey);
+
+    function spawn() {
+      const isRock = Math.random() < 0.45;
+      const spec = isRock
+        ? pick(p.junk.asteroids)
+        : pick(p.junk.loot);
+      const size = isRock ? 44 : 40;
+      const el = propToken(isRock ? spec : spec.idle, size);
+      el.classList.add("reward-item");
+      if (!isRock) el._play({});                       // les gemmes scintillent en boucle
+      const it = { el, x: 104, y: 10 + Math.random() * 78, speed: 0.020 + Math.random() * 0.016, isRock, spec };
+      el.style.left = it.x + "%"; el.style.top = it.y + "%";
+      stage.appendChild(el);
+      items.push(it);
+    }
+
+    function boom(it) {
+      it.dead = true;
+      if (it.isRock) {
+        it.el._play({ freeze: true });                 // l'astéroïde se pulvérise
+        score += 1;
+      } else {
+        const s = it.spec.collect;
+        const el2 = propToken(s, 40);
+        el2.classList.add("reward-item");
+        el2.style.left = it.x + "%"; el2.style.top = it.y + "%";
+        stage.appendChild(el2);
+        el2._play({ freeze: true });
+        it.el.remove();
+        it.el = el2;
+        score += it.spec.pts;
+      }
+      setTimeout(() => it.el.remove(), 700);
+      hud.textContent = "⭐ " + score + " · ⏱️ " + remaining() + " s";
+    }
+
+    function frame(t) {
+      if (!running) return;
+      if (!last) last = t;
+      const dt = Math.min(50, t - last); last = t; elapsed += dt;
+      if (elapsed >= p.duration * 1000) return end();
+
+      spawnAt -= dt;
+      if (spawnAt <= 0) { spawn(); spawnAt = 480 + Math.random() * 420; }
+
+      for (const it of items) {
+        if (it.dead) continue;
+        it.x -= it.speed * dt;
+        it.el.style.left = it.x + "%";
+        // collision : la fusée est à x = 18 %, on tolère large (c'est une récompense)
+        if (it.x < 24 && it.x > 10 && Math.abs(it.y - shipY) < 11) boom(it);
+        else if (it.x < -12) { it.dead = true; it.el.remove(); }
+      }
+      hud.textContent = "⭐ " + score + " · ⏱️ " + remaining() + " s";
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    function end() {
+      running = false;
+      window.removeEventListener("keydown", onKey);
+      UI.confetti();
+      UI.toast("Score : " + score + " ! 🚀");
+      setTimeout(() => finishDay(lv, 3, score, score), 900);   // récompense : toujours 3 étoiles
+    }
+
+    // si on quitte l'écran, on coupe la boucle
+    const stop = () => { running = false; window.removeEventListener("keydown", onKey); };
+    window.addEventListener("hashchange", stop, { once: true });
+  }
+
+  function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+
+  /* ---------- Espace : mini-jeu d'une planète ----------
+     Deux mécaniques, selon p.mode :
+     · parcours (défaut) : bonne réponse = l'astronaute franchit un appui, mauvaise = il reste bloqué ;
+     · "reveal" (Vénus)  : pas d'astronaute — les nuages recouvrent le paysage et chaque bonne
+       réponse en dissipe un, découvrant le fond petit à petit. */
+  function playPlanet(lv, p) {
+    const w = CV.worldByIndex(CV.worldIndexOfLevel(lv.level));
+    const pool = CV.drawMix(p.gen || []);
+    const reveal = p.mode === "reveal";
+    const c = screen();
+    c.appendChild(backBar("#/carte", "Carte"));
+    c.appendChild(h("h2", { class: "section-title" }, p.emoji + " " + p.name));
+    if (!pool.length) { c.appendChild(h("div", { class: "card" }, h("p", {}, "Questions indisponibles."))); return; }
+
+    const last = p.points.length - 1;
+    let at = 0, correct = 0, total = 0, qi = 0;
+
+    // L'astronaute… ou le rover de Mars, qui a son propre jeu d'animations.
+    const tok = p.vehicle ? vehicleToken(p.vehicle, p.heroSize || 76) : heroToken(w, p.heroSize || 62);
+    const hop = h("div", { class: "planet-hop" }, tok);
+    const astro = h("div", { class: "planet-hero" }, hop);
+    const stage = h("div", { class: "planet-stage", style: { backgroundImage: "url(" + p.bg + ")" } });
+    if (!reveal) stage.appendChild(astro);
+    if (p.vertical) stage.classList.add("vertical");
+    if (p.hscroll) stage.classList.add("wide");
+    const scene = h("div", { class: "planet-scene" + (p.vertical ? " scroll" : "") + (p.hscroll ? " hscroll" : "") }, stage);
+    c.appendChild(scene);
+
+    // Objets posés dans la scène : appuis (nuages, plateformes) ou couverture nuageuse.
+    // propPct = taille en % de la HAUTEUR de la scène (les nuages de Vénus doivent tout couvrir,
+    // quelle que soit la taille de l'écran) ; propSize = taille fixe en px.
+    const props = [];
+    if (p.props) {
+      const stageH = stage.getBoundingClientRect().height || 210;
+      const size = p.propPct ? Math.round(stageH * p.propPct / 100) : (p.propSize || 52);
+      p.points.forEach((pt, i) => {
+        const el = propToken(p.props[i % p.props.length], size);
+        el.classList.add("planet-prop");
+        if (reveal) el.classList.add("cover");
+        if (p.propAnchor) el.style.transform = "translate(-50%, -" + p.propAnchor + "%)";
+        el.style.left = pt[0] + "%"; el.style.top = pt[1] + "%";
+        if (reveal) stage.appendChild(el); else stage.insertBefore(el, astro);
+        props.push(el);
+      });
+    }
+
+    const steps = h("div", { class: "planet-steps" });
+    c.appendChild(steps);
+    c.appendChild(h("p", { class: "center muted planet-fact" }, "💡 " + p.fact));
+    const qbox = h("div", { class: "card" });
+    c.appendChild(qbox);
+    c.appendChild(h("button", { class: "btn ghost small block mt", onclick: () => skipLevel(lv.level) },
+      "⏭️ Passer la planète (0 étoile)"));
+
+    function place(i, instant) {
+      if (i > 0) {
+        const a = p.points[i - 1], b = p.points[i];
+        // Saturne : la piste des anneaux est une courbe → l'astronaute s'incline dans la pente.
+        // Ailleurs : il se contente de regarder du bon côté.
+        if (p.followAngle) {
+          const r = stage.getBoundingClientRect();
+          setHeroAngle(tok, (b[0] - a[0]) / 100 * r.width, (b[1] - a[1]) / 100 * r.height, true);
+        } else setHeroFacing(tok, b[0] >= a[0]);
+      }
+      astro.style.transition = instant ? "none" : "";
+      astro.style.left = p.points[i][0] + "%";
+      astro.style.top = p.points[i][1] + "%";
+      steps.textContent = (p.stepWord || "Appui") + " " + (i + 1) + " / " + p.points.length;
+      if (p.vertical || p.hscroll) followHero(i, instant);
+    }
+
+    /* Scène plus grande que la fenêtre : elle défile pour garder le héros au centre.
+       Lune = verticalement (il grimpe), Mars = horizontalement (le rover roule). */
+    function followHero(i, instant) {
+      const behavior = instant ? "auto" : "smooth";
+      if (p.vertical) {
+        const top = stage.scrollHeight * p.points[i][1] / 100 - scene.clientHeight / 2;
+        scene.scrollTo({ top: Math.max(0, top), behavior });
+      } else {
+        const left = stage.scrollWidth * p.points[i][0] / 100 - scene.clientWidth / 2;
+        scene.scrollTo({ left: Math.max(0, left), behavior });
+      }
+    }
+    // Pose de repos : "idle" partout, sauf sur Saturne où il reste sur sa planche ("surf").
+    const REST = p.idleMode || "idle";
+    function anim(mode, opts) { if (tok._setMode) tok._setMode(mode === "idle" ? REST : mode, opts || {}); }
+    function fx(emo) { const f = h("div", { class: "combat-hitfx" }, emo); stage.appendChild(f); setTimeout(() => f.remove(), 600); }
+
+    function showRemaining() {
+      const left = props.length - at;
+      steps.textContent = left > 0 ? (p.stepWord || "Nuage") + "s restants : " + left : "Ciel dégagé ! 🌤️";
+    }
+
+    if (reveal) showRemaining(); else { place(0, true); anim("idle"); }
+    nextQ();
+
+    /* Neptune : le vent le repousse d'un cran en arrière. */
+    function pushBack() {
+      if (at <= 0) { hop.classList.add("blocked"); setTimeout(() => hop.classList.remove("blocked"), 500); return; }
+      at--;
+      anim("sad", { once: true });
+      place(at);
+      setHeroFacing(tok, false);                 // APRÈS place() : sinon il remettrait le regard vers l'avant
+      setTimeout(() => { setHeroFacing(tok, true); anim("idle"); }, 800);
+    }
+
+    /* Parcours : il franchit un appui (saut, marche, surf, ou roulage pour le rover). */
+    function advance() {
+      const move = (p.moves && p.moves[at]) || "jump";
+      const from = at;
+      at++;
+      if (move === "jump") { hop.classList.add("hopping"); anim("jump", { once: true }); }
+      else if (move === "surf") { anim("surf"); }  // il reste sur sa planche
+      else { anim("walk"); }                       // marche, ou roues + poussière pour le rover
+      place(at);
+      // L'appui quitté se dissipe une fois qu'il a décollé (et reste dissipé : pas de retour possible).
+      if (p.propsVanish && props[from]) setTimeout(() => props[from]._play({ freeze: true }), 320);
+      setTimeout(() => { hop.classList.remove("hopping"); anim("idle"); }, 750);
+    }
+
+    /* Dégagement : un nuage de plus s'évapore, on voit un peu plus du paysage. */
+    function dissipate() {
+      const el = props[at];
+      at++;
+      if (el) el._play({ freeze: true });
+      showRemaining();
+    }
+
+    /* Lune : mauvaise réponse → la plateforme sous ses pieds se brise, il retombe d'un cran,
+       puis une NOUVELLE plateforme arrive en glissant du bord le plus proche. */
+    function breakUnder() {
+      const i = at, el = props[i];
+      if (el) {
+        el._play({ freeze: true });                          // elle se brise, éclats figés
+        setTimeout(() => {
+          el.style.transition = "opacity .25s"; el.style.opacity = "0";   // les éclats s'effacent
+          setTimeout(() => respawn(i), 260);
+        }, (el._dur || 0.8) * 1000);
+      }
+      if (at > 0) {                                          // il retombe sur la plateforme du dessous
+        at--;
+        hop.classList.add("hopping"); anim("jump", { once: true });
+        place(at);
+        setTimeout(() => { hop.classList.remove("hopping"); anim("idle"); }, 750);
+      } else {
+        hop.classList.add("blocked"); setTimeout(() => hop.classList.remove("blocked"), 500);
+      }
+    }
+
+    /* Une plateforme neuve entre en glissant, par le bord dont elle est le plus proche. */
+    function respawn(i) {
+      const el = props[i];
+      if (!el) return;
+      const x = p.points[i][0], fromLeft = x < 50;
+      el._reset();
+      el.style.transition = "none";
+      el.style.left = (fromLeft ? -25 : 125) + "%";
+      el.style.opacity = "1";
+      void el.offsetWidth;
+      el.style.transition = "left .65s cubic-bezier(.2,.7,.3,1)";
+      el.style.left = x + "%";
+    }
+
+    function nextQ() {
+      if (at >= (reveal ? props.length : last)) return win();
+      const ex = pool[qi % pool.length]; qi++;
+      CV.Engine.run(qbox, [ex], {
+        compact: true,
+        onComplete: ({ correct: ok }) => {
+          total++;
+          if (ok) { correct++; fx("⭐"); reveal ? dissipate() : advance(); }
+          else {
+            fx("❌");
+            if (reveal) { /* Vénus : rien ne bouge */ }
+            else if (p.breakOnWrong) breakUnder();          // Lune : la plateforme cède
+            else if (p.pushBackOnWrong) pushBack();         // Neptune : le vent le repousse
+            else { hop.classList.add("blocked"); setTimeout(() => hop.classList.remove("blocked"), 500); }
+          }
+          setTimeout(nextQ, ok ? 950 : (p.breakOnWrong ? 1700 : (p.pushBackOnWrong ? 1100 : 700)));
+        }
+      });
+    }
+
+    function win() {
+      const stars = Game.starsForScore(correct, total);
+      // Mars : arrivé au bout, le rover déploie sa parabole avant qu'on annonce la victoire.
+      // Il la garde déployée (freeze sur la dernière image) au lieu de la replier : c'est sa pose
+      // de victoire. On laisse le déploiement finir (0,9 s) PUIS une seconde entière sur la pose
+      // figée — sinon on quitte l'écran avant d'avoir eu le temps de la voir.
+      const scan = p.vehicle && p.vehicle.scan;
+      const wait = p.winMode === "scan" ? Math.round((scan ? scan.dur : 0.9) * 1000) + 1000 : 800;
+      if (p.winMode === "scan") { anim("scan", { freeze: true }); fx("📡"); }
+      if (stars > 0) UI.confetti();
+      UI.toast(p.name + " est explorée ! " + p.emoji);
+      setTimeout(() => finishDay(lv, stars, correct, total), wait);
+    }
   }
 
   /* ---------- Programme du jour (écran d'étapes) ---------- */
@@ -821,8 +1416,9 @@ window.CV = window.CV || {};
         h("div", { style: { fontSize: "30px" } }, s.icon),
         h("div", { style: { flex: "1" } },
           h("div", { style: { fontWeight: "bold", color: "var(--ink)" } }, s.label),
-          h("div", { class: "muted", style: { fontSize: "13px" } }, stepDesc(s))),
-        res ? h("div", { style: { fontSize: "18px" } }, "✅ " + res.correct + "/" + res.total)
+          h("div", { class: "muted", style: { fontSize: "13px" } }, stepDesc(s)),
+          isCurrent ? h("button", { class: "skip-mini", style: { marginTop: "8px" }, title: "Passer cette étape (0 étoile)", onclick: (e) => { e.stopPropagation(); skipStep(i); } }, "Passer sans faire ⏭️") : null),
+        res ? h("div", { style: { fontSize: "18px" } }, res.skipped ? "⏭️" : ("✅ " + res.correct + "/" + res.total))
             : isCurrent ? h("div", { class: "btn small" }, "Jouer →")
             : h("div", { style: { fontSize: "20px" } }, "🔒"));
       c.appendChild(card);
@@ -830,13 +1426,27 @@ window.CV = window.CV || {};
 
     if (daySession.done.every(Boolean)) {
       c.appendChild(h("button", { class: "btn big gold block mt", onclick: () => {
-        finishDay(lv, Game.starsForScore(daySession.correct, daySession.total), daySession.correct, daySession.total);
+        finishDay(lv, computeDayStars(daySession), daySession.correct, daySession.total);
       } }, "🏁 Terminer la journée"));
     }
-    c.appendChild(h("button", { class: "btn debug block mt", onclick: () => skipLevel(level) }, "🔓 Débloquer (test)"));
+  }
+
+  /* Passer une seule étape : comptée comme faite mais sans points. */
+  function skipStep(i) {
+    if (!confirm("Passer cette étape sans la faire ?\nTu perdras les étoiles de cette partie.")) return;
+    daySession.done[i] = { correct: 0, total: 0, skipped: true };
+    renderDayProgram(daySession.level);
+  }
+
+  /* Étoiles de la journée : basées sur la réussite, moins 1 par étape passée. */
+  function computeDayStars(ds) {
+    const skipped = ds.done.filter((d) => d && d.skipped).length;
+    const base = ds.total > 0 ? Game.starsForScore(ds.correct, ds.total) : 0;
+    return Math.max(0, base - skipped);
   }
 
   function stepDesc(s) {
+    if (s.desc) return s.desc;
     if (s.kind === "dictee") { const n = s.count || 1; return n + " phrase" + (n > 1 ? "s" : "") + " à écouter et écrire"; }
     if (s.kind === "probleme") return "Lis bien la consigne et résous";
     const mod = CV.getModule(s.moduleId);
@@ -892,17 +1502,40 @@ window.CV = window.CV || {};
     renderDayProgram(daySession.level);
   }
 
-  function finishDay(lv, stars, correct, total) {
+  /* Où le héros doit-il se tenir après avoir joué ce niveau ?
+     - il vient de débloquer la suite → sur la nouvelle pierre courante (il avance) ;
+     - il rejouait une vieille pierre → il reste sur celle-là ;
+     - monde en ordre libre (l'Espace) → la fusée reste en orbite autour de la planète qu'il
+       vient de jouer : il n'y a pas de « case suivante ». */
+  function saveHeroSpot(state, lv) {
+    const cur = state.currentDay || 1;
+    const free = CV.worldByIndex(CV.worldIndexOfLevel(lv.level)).freeOrder;
+    const advanced = !free && cur > lv.level;
+    const wi = CV.worldIndexOfLevel(advanced ? cur : lv.level);
+    const ni = CV.nodeIndexOfLevel(advanced ? cur : lv.level);
+    state.heroNode = state.heroNode || {};
+    state.heroNode[wi] = ni;
+    state.heroWorld = wi;              // on rouvre la carte sur le monde où il se trouve
+    mapViewIndex = wi;
+  }
+
+  function finishDay(lv, stars, correct, total, skipped) {
     const state = Store.current();
-    const r = Game.completeDay(state, lv, stars);
+    const plutonWasLocked = !CV.plutonUnlocked(state);
+    const r = Game.completeDay(state, lv, stars, skipped);
+    saveHeroSpot(state, lv);
+    // Les 8 planètes viennent d'être bouclées → on annonce Pluton en arrivant sur la carte.
+    if (plutonWasLocked && CV.plutonUnlocked(state)) plutonAnnounce = true;
     Store.save();
-    mapViewIndex = null; daySession = null;
+    daySession = null;
+    const low = stars === 0;
     const c = screen();
     UI.victory(c, {
-      emoji: stars === 3 ? "🌟" : "🎉",
-      title: "Journée réussie !",
+      emoji: low ? "💪" : (stars === 3 ? "🌟" : "🎉"),
+      title: low ? "Niveau terminé" : "Journée réussie !",
       stars: stars,
-      subtitle: correct != null ? (correct + " / " + total + " bonnes réponses sur la journée") : "Bravo, champion !",
+      subtitle: low ? "Pas d'étoile cette fois — rejoue-le pour les gagner ! 💪"
+        : (correct != null ? (correct + " / " + total + " bonnes réponses sur la journée") : "Bravo, champion !"),
       badges: r.newBadges || [],
       cta: "Retour à la carte 🗺️",
       onContinue: () => goto("#/carte")
@@ -910,13 +1543,60 @@ window.CV = window.CV || {};
   }
 
   /* ---------- Boss : combat héros vs boss ---------- */
+  /* scale : les cellules des boss ne font pas toutes la même taille (197 à 235 px) et le halo
+     du fantôme occupe une bonne partie de la sienne — à taille d'affichage égale il paraîtrait
+     plus petit. On rattrape planche par planche. */
   const BOSS = {
-    dinosaure:  { emoji: "🦖", name: "le T-Rex", hp: 6 },
-    ulysse:     { emoji: "🐲", name: "le Minotaure", hp: 6 },
-    chevaliers: { emoji: "🐉", name: "le Dragon", hp: 7 },
-    pirate:     { emoji: "☠️", name: "le Capitaine Fantôme", hp: 7 },
-    espace:     { emoji: "👾", name: "l'Alien", hp: 8 }
+    dinosaure:  { emoji: "🦖", name: "le T-Rex", hp: 6, scale: 1.15 },
+    ulysse:     { emoji: "⚡", name: "Thor", hp: 6, scale: 0.8 },
+    chevaliers: { emoji: "🐉", name: "le Dragon", hp: 7, scale: 1.25 },
+    pirate:     { emoji: "☠️", name: "le Capitaine Fantôme", hp: 7, scale: 1 },
+    espace:     { emoji: "👾", name: "l'Alien", hp: 8, scale: 1 }
   };
+
+  /* Anime une planche de sprite (même mécanisme que le héros).
+     opts.once  = jouer une fois puis revenir sur opts.then (déf. idle)
+     opts.freeze = jouer une fois et rester figé sur la dernière image (mort). */
+  function setSpriteMode(wrap, strip, anim, mode, opts) {
+    const a = anim[mode] || anim.idle;
+    strip.style.width = (a.frames * 100) + "%";
+    strip.style.backgroundImage = "url(" + a.strip + ")";
+    strip.style.animation = "none";
+    // Sous l'animation, on pose la position de repos : image 0, ou dernière image si on gèle.
+    // Sans animation-fill-mode, le transform inline reprend la main dès la fin → aucun clignotement.
+    strip.style.transform = opts.freeze
+      ? "translateX(" + (-100 * (a.frames - 1) / a.frames) + "%)"
+      : "";
+    void strip.offsetWidth;                       // redémarre l'animation proprement
+    const single = opts.once || opts.freeze;
+    const dir = (!single && (mode === "idle" || a.yoyo)) ? " alternate" : "";
+    strip.style.animation = "spritestep " + a.dur + "s steps(" + a.frames + ") " + (single ? "1" : "infinite") + dir;
+    clearTimeout(wrap._animT);
+    if (opts.once) {
+      wrap._animT = setTimeout(() => setSpriteMode(wrap, strip, anim, opts.then || "idle", {}), a.dur * 1000);
+    }
+  }
+
+  /* Jeton du boss : planche animée si le monde en a une, sinon emoji.
+     size = HAUTEUR du jeton. Les cellules ne sont pas toujours carrées (le dragon fait 484×212 :
+     la largeur en trop sert à déployer sa flamme) → on respecte le ratio, sinon il est écrasé. */
+  function bossToken(w, cfg, size) {
+    const cell = w.bossAnim && w.bossAnim.idle && w.bossAnim.idle.cell;
+    const wide = cell ? Math.round(size * cell[0] / cell[1]) : size;
+    const wrap = h("div", { class: "hero-token boss-token", style: { width: wide + "px", height: size + "px" } });
+    const emoStyle = { fontSize: Math.round(size * 0.75) + "px" };
+    if (!w.bossAnim) { wrap.appendChild(h("div", { class: "hero-emo", style: emoStyle }, cfg.emoji)); return wrap; }
+    preloadAnim(w.bossAnim);
+    const strip = h("div", { class: "hero-strip" });
+    const emo = h("div", { class: "hero-emo", style: Object.assign({ display: "none" }, emoStyle) }, cfg.emoji);
+    wrap.appendChild(strip); wrap.appendChild(emo);
+    const probe = new Image();
+    probe.onerror = () => { strip.style.display = "none"; emo.style.display = "block"; };
+    probe.src = w.bossAnim.idle.strip;
+    wrap._setMode = (mode, opts) => setSpriteMode(wrap, strip, w.bossAnim, mode, opts || {});
+    wrap._setMode("idle");
+    return wrap;
+  }
 
   function playBoss(lv) {
     const state = Store.current();
@@ -929,22 +1609,26 @@ window.CV = window.CV || {};
 
     let heroHP = 3, bossHP = cfg.hp, qi = 0;
     const w = CV.worldByIndex(CV.worldIndexOfLevel(lv.level));
-    const heroTok = heroToken(w, 84);
+    const heroTok = heroToken(w, 70);
     const heroEl = h("div", { class: "fighter hero" }, heroTok);
     const heroAnim = (mode, opts) => { if (heroTok._setMode) heroTok._setMode(mode, opts); };
-    const bossEl = h("div", { class: "fighter boss" }, cfg.emoji);
-    const heroHpEl = h("div", { class: "hp" });
-    const bossHpEl = h("div", { class: "hp" });
-    const scene = h("div", { class: "combat-scene" },
-      h("div", { class: "fighter-col" }, heroHpEl, heroEl, h("div", { class: "fname" }, state.displayName)),
-      h("div", { class: "combat-vs" }, "⚔️"),
-      h("div", { class: "fighter-col" }, bossHpEl, bossEl, h("div", { class: "fname" }, cfg.name)));
+    const bossTok = bossToken(w, cfg, Math.round(86 * (cfg.scale || 1)));
+    const bossEl = h("div", { class: "fighter boss" }, bossTok);
+    const bossAnim = (mode, opts) => { if (bossTok._setMode) bossTok._setMode(mode, opts); };
+    const heroHpEl = h("div", { class: "hp hp-left" });
+    const bossHpEl = h("div", { class: "hp hp-right" });
+    // Combattants posés dans le décor : cœurs dans les coins hauts, personnages remontés
+    // vers le centre pour qu'ils ne se retrouvent pas plantés dans un tonneau ou un rocher.
+    const scene = h("div", {
+      class: "combat-scene" + (w.bossBg ? " has-bg" : ""),
+      style: w.bossBg ? { backgroundImage: "url(" + w.bossBg + ")" } : {}
+    }, heroHpEl, bossHpEl, heroEl, bossEl);
     c.appendChild(scene);
     const intro = h("p", { class: "center muted", style: { marginTop: "-4px" } }, "Réponds juste pour attaquer ! Une erreur et c'est toi qui prends un coup. 3 erreurs = recommencer.");
     c.appendChild(intro);
     const qbox = h("div", { class: "card" });
     c.appendChild(qbox);
-    c.appendChild(h("button", { class: "btn debug block mt", onclick: () => skipLevel(lv.level) }, "🔓 Débloquer (test)"));
+    c.appendChild(h("button", { class: "btn ghost small block mt", onclick: () => skipLevel(lv.level) }, "⏭️ Passer le boss (0 étoile)"));
 
     function updateHP() {
       heroHpEl.textContent = "❤️".repeat(Math.max(0, heroHP)) + "🤍".repeat(Math.max(0, 3 - heroHP));
@@ -962,10 +1646,23 @@ window.CV = window.CV || {};
       CV.Engine.run(qbox, [ex], {
         compact: true,
         onComplete: ({ correct }) => {
-          if (correct) { bossHP--; heroEl.classList.add("attack-r"); bossEl.classList.add("hit"); fx("💥"); heroAnim("happy", { once: true }); }
-          else { heroHP--; bossEl.classList.add("attack-l"); heroEl.classList.add("hit"); fx("💢"); heroAnim("sad", { once: true }); }
+          if (correct) {
+            bossHP--;
+            heroEl.classList.add("attack-r"); bossEl.classList.add("hit"); fx("💥");
+            heroAnim("attack", { once: true });     // happy est gardé pour la victoire
+            if (bossHP <= 0) bossAnim("death", { freeze: true }); else bossAnim("hit", { once: true });
+          } else {
+            heroHP--;
+            bossEl.classList.add("attack-l"); heroEl.classList.add("hit"); fx("💢");
+            heroAnim("sad", { once: true }); bossAnim("attack", { once: true });
+          }
           updateHP();
-          setTimeout(() => { heroEl.className = "fighter hero"; bossEl.className = "fighter boss"; nextQ(); }, 850);
+          const wait = bossHP <= 0 ? 1200 : 850;   // laisse l'animation de mort se jouer
+          setTimeout(() => {
+            heroEl.className = "fighter hero";
+            bossEl.className = "fighter boss" + (bossHP <= 0 ? " dead" : "");
+            nextQ();
+          }, wait);
         }
       });
     }
@@ -992,9 +1689,9 @@ window.CV = window.CV || {};
   /* ---------- Fin d'un niveau ---------- */
   function finishLevel(lv, stars, correct, total, isSkip) {
     const state = Store.current();
-    Game.completeDay(state, lv, stars);
+    Game.completeDay(state, lv, stars, isSkip);
+    saveHeroSpot(state, lv);
     Store.save();
-    mapViewIndex = null;
     if (lv.isBoss) return worldCleared(lv, stars, correct, total);
     goto("#/carte");
   }
@@ -1004,7 +1701,7 @@ window.CV = window.CV || {};
     const state = Store.current();
     const fullyDone = Object.keys(state.dayProgress).length >= CV.TOTAL_DAYS;
     const c = screen();
-    UI.confetti();
+    if (stars > 0) UI.confetti();   // pas de feu d'artifice si le boss est passé (0 étoile)
     if (fullyDone) {
       UI.victory(c, {
         emoji: "🎓", title: "Tu as fini toute l'aventure !",
@@ -1061,6 +1758,68 @@ window.CV = window.CV || {};
       h("span", {}, label), h("span", { class: "spacer" }), h("strong", {}, String(val)));
   }
 
+  /* ---------- Révisions libres (s'entraîner sur n'importe quelle notion) ---------- */
+  function renderRevisions() {
+    const state = Store.current();
+    UI.applyTheme(state.theme || "dinosaure");
+    const c = screen();
+    c.appendChild(UI.statusBar(state));
+    c.appendChild(h("h2", { class: "section-title" }, "📚 Révisions libres"));
+    c.appendChild(h("p", { class: "muted", style: { marginTop: "-8px" } }, "Choisis une notion à réviser. Les questions changent à chaque fois !"));
+
+    [["francais", "📖 Français"], ["maths", "🔢 Maths"], ["sciences", "🔬 Sciences"], ["culture", "🌍 Culture"]].forEach(([key, label]) => {
+      const mods = (CV.content[key] || []).filter((m) => !m.isDictee);
+      if (!mods.length) return;
+      c.appendChild(h("h3", { style: { margin: "16px 0 6px" } }, label));
+      const grid = h("div", { class: "rev-grid" });
+      mods.forEach((m) => grid.appendChild(
+        h("button", { class: "rev-chip", onclick: () => practiceModule(m) },
+          h("span", { style: { fontSize: "20px" } }, m.icon), h("span", {}, m.title))));
+      c.appendChild(grid);
+    });
+
+    c.appendChild(h("h3", { style: { margin: "16px 0 6px" } }, "🎯 Spécial"));
+    c.appendChild(h("div", { class: "rev-grid" },
+      h("button", { class: "rev-chip", onclick: () => practiceDictee() }, h("span", { style: { fontSize: "20px" } }, "🎧"), h("span", {}, "Dictée")),
+      h("button", { class: "rev-chip", onclick: () => practiceLogic() }, h("span", { style: { fontSize: "20px" } }, "🧩"), h("span", {}, "Jeux de logique"))));
+  }
+
+  function practiceModule(mod) {
+    practiceRun(mod.icon + " " + mod.title, () => (CV.exercisesFor ? CV.exercisesFor(mod) : mod.exercises).slice(0, 10), mod.lesson);
+  }
+  function practiceDictee() { practiceRun("🎧 Dictée", () => [CV.drawDictee(1)], null); }
+  function practiceLogic() { practiceRun("🧩 Jeux de logique", () => { const a = []; for (let i = 0; i < 5; i++) a.push(CV.gen.logic()); return a; }, null); }
+
+  function practiceRun(title, makeEx, lesson) {
+    const c = screen();
+    c.appendChild(h("div", { class: "h-row" },
+      h("button", { class: "btn ghost small", onclick: () => goto("#/revisions") }, "← Révisions"),
+      h("span", { class: "pill" }, "Entraînement")));
+    c.appendChild(h("h2", { class: "section-title" }, title));
+    if (lesson) {
+      const box = h("div", { class: "card glass", style: { display: "none" } });
+      box.appendChild(h("p", {}, lesson.intro));
+      const ul = h("ul", { class: "lesson-points" }); lesson.points.forEach((p) => ul.appendChild(h("li", { html: p }))); box.appendChild(ul);
+      if (lesson.example) box.appendChild(h("div", { class: "lesson-example", html: "📌 " + lesson.example }));
+      c.appendChild(h("button", { class: "btn ghost small", onclick: () => { box.style.display = box.style.display === "none" ? "block" : "none"; } }, "📖 Revoir la leçon"));
+      c.appendChild(box);
+    }
+    const qbox = h("div", { class: "card" });
+    c.appendChild(qbox);
+    CV.Engine.run(qbox, makeEx(), {
+      onComplete: ({ correct, total }) => {
+        const cc = screen();
+        const good = total > 0 && correct / total >= 0.9;
+        cc.appendChild(h("div", { class: "card center" },
+          h("div", { style: { fontSize: "52px" } }, good ? "🌟" : "💪"),
+          h("h2", {}, "Entraînement terminé"),
+          h("p", {}, correct + " / " + total + " bonnes réponses"),
+          h("button", { class: "btn big block mt", onclick: () => practiceRun(title, makeEx, lesson) }, "↻ Encore (nouvelles questions)"),
+          h("button", { class: "btn ghost block mt", onclick: () => goto("#/revisions") }, "← Choisir une autre notion")));
+      }
+    });
+  }
+
   /* ---------- Profil & réglages ---------- */
   function renderProfil() {
     const state = Store.current();
@@ -1107,6 +1866,27 @@ window.CV = window.CV || {};
     c.appendChild(h("div", { class: "card glass" },
       h("strong", {}, "⏱️ Durée d'une session conseillée"),
       h("p", { class: "muted" }, "Indicatif : l'appli encourage " + state.settings.minMin + " min minimum et propose une pause vers " + state.settings.maxMin + " min.")));
+
+    // Outils test (visible seulement pour un joueur « test »)
+    if ((state.displayName || "").toLowerCase().indexOf("test") >= 0) {
+      const expTa = h("textarea", { id: "export-ta", readonly: "", style: { display: "none", width: "100%", height: "130px", marginTop: "8px", fontFamily: "monospace", fontSize: "11px", background: "#0c0a18", color: "#9effa0", borderRadius: "8px", border: "1px solid rgba(255,255,255,.2)", padding: "6px" } });
+      c.appendChild(h("div", { class: "card glass" },
+        h("strong", {}, "🔧 Outils test"),
+        h("button", { class: "btn ghost small mt block", onclick: () => {
+          Store.update((s) => { s.currentDay = CV.TOTAL_DAYS; });
+          UI.toast("🔓 Tous les mondes débloqués !");
+          mapViewIndex = null; goto("#/carte");
+        } }, "🔓 Débloquer tous les mondes"),
+        h("button", { class: "btn ghost small mt block", onclick: () => {
+          let nodes = {}, paths = {};
+          try { nodes = JSON.parse(localStorage.getItem("cv_nodes_override") || "{}"); } catch (e) {}
+          try { paths = JSON.parse(localStorage.getItem("cv_paths_override") || "{}"); } catch (e) {}
+          expTa.value = JSON.stringify({ nodes, paths });
+          expTa.style.display = "block"; expTa.select();
+          try { document.execCommand("copy"); UI.toast("📋 Copié ! Colle-le-moi ici."); } catch (e) { UI.toast("Sélectionne et copie le texte 👇"); }
+        } }, "📤 Exporter pierres & chemins"),
+        expTa));
+    }
 
     // Actions
     c.appendChild(h("div", { class: "btn-row mt" },

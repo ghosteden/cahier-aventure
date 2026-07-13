@@ -104,5 +104,77 @@ CV.content.culture = [
       { type: "calcul", q: "Pierre a 3 ans de plus que Léa qui a 7 ans. Quel âge a Pierre ?", answer: 10, explain: "7 + 3 = 10 ans." },
       { type: "qcm", q: "Quel intrus dans la liste : pomme, poire, carotte, banane ?", choices: ["pomme", "carotte", "banane"], answer: 1, explain: "La carotte est un légume, les autres des fruits." }
     ]
+  },
+
+  {
+    id: "cu-frise",
+    subject: "culture",
+    title: "La frise du temps",
+    icon: "📜",
+    lesson: {
+      intro: "Pour se repérer dans le temps qui passe, on utilise une frise : elle va du plus ancien (à gauche) au plus récent (à droite).",
+      points: [
+        "On lit une frise de gauche (avant) à droite (après / aujourd'hui).",
+        "Les générations : les grands-parents sont nés avant les parents, avant les enfants.",
+        "Les grandes périodes : Préhistoire, Antiquité, Moyen Âge, Temps modernes, Époque actuelle.",
+        "« Avant » = plus ancien ; « après » = plus récent."
+      ],
+      example: "Grand-père → papa → moi : du plus ancien au plus récent.",
+      tip: "Sur une frise, plus c'est à gauche, plus c'est vieux."
+    },
+    exercises: [
+      { type: "qcm", q: "Sur une frise du temps, le plus ancien est…", choices: ["à gauche", "à droite", "au milieu"], answer: 0, explain: "à gauche." },
+      { type: "qcm", q: "Qui est né en premier ?", choices: ["le grand-père", "le papa", "l'enfant"], answer: 0, explain: "le grand-père (le plus ancien)." },
+      { type: "qcm", q: "À quelle période vivaient les chevaliers ?", choices: ["la Préhistoire", "le Moyen Âge", "aujourd'hui"], answer: 1, explain: "le Moyen Âge." },
+      { type: "truefalse", q: "La Préhistoire vient avant l'Antiquité.", answer: true, explain: "c'est la période la plus ancienne." }
+    ]
+  },
+
+  {
+    id: "cu-carte",
+    subject: "culture",
+    title: "Lire un plan et une carte",
+    icon: "🧭",
+    lesson: {
+      intro: "Un plan ou une carte représente un lieu vu de dessus, en plus petit, pour se repérer.",
+      points: [
+        "Une carte se regarde « vu du ciel » (de dessus).",
+        "Une LÉGENDE explique ce que veulent dire les couleurs et les dessins.",
+        "Le bleu = l'eau (mers, rivières), le vert = la végétation, le marron = les montagnes.",
+        "La boussole indique le Nord (N), le Sud (S), l'Est (E) et l'Ouest (O)."
+      ],
+      example: "Sur un plan de ville, on trouve les rues, l'école, le parc, vus de dessus.",
+      tip: "Regarde toujours la légende pour comprendre les couleurs et les symboles."
+    },
+    exercises: [
+      { type: "qcm", q: "Sur une carte, le bleu représente…", choices: ["les montagnes", "l'eau", "les routes"], answer: 1, explain: "l'eau." },
+      { type: "qcm", q: "Qu'est-ce qui explique les symboles d'une carte ?", choices: ["la légende", "le titre", "la date"], answer: 0, explain: "la légende." },
+      { type: "qcm", q: "La boussole indique surtout…", choices: ["le Nord", "l'heure", "la météo"], answer: 0, explain: "le Nord." },
+      { type: "truefalse", q: "Une carte représente un lieu vu de dessus.", answer: true, explain: "oui, comme si on volait au-dessus." }
+    ]
+  },
+
+  {
+    id: "cu-emc",
+    subject: "culture",
+    title: "Les règles de la vie en commun",
+    icon: "🤝",
+    lesson: {
+      intro: "Vivre ensemble (à l'école, à la maison) demande des règles pour que tout le monde soit bien.",
+      points: [
+        "On est poli : bonjour, merci, s'il te plaît, au revoir, pardon.",
+        "On respecte les autres : on ne se moque pas, on ne tape pas.",
+        "On écoute quand quelqu'un parle et on attend son tour.",
+        "On prend soin du matériel et des lieux (on ne gaspille pas, on range)."
+      ],
+      example: "Dire « s'il te plaît » et « merci », attendre son tour pour parler.",
+      tip: "La règle d'or : traite les autres comme tu aimerais être traité."
+    },
+    exercises: [
+      { type: "qcm", q: "Que dit-on pour demander gentiment ?", choices: ["s'il te plaît", "donne !", "vite !"], answer: 0, explain: "« s'il te plaît »." },
+      { type: "truefalse", q: "Se moquer d'un camarade est respectueux.", answer: false, explain: "non, il faut respecter les autres." },
+      { type: "qcm", q: "Quand quelqu'un parle, je…", choices: ["l'écoute", "crie plus fort", "l'ignore"], answer: 0, explain: "on écoute et on attend son tour." },
+      { type: "qcm", q: "Après avoir utilisé le matériel, je…", choices: ["le range", "le laisse par terre", "le casse"], answer: 0, explain: "on range et on prend soin des choses." }
+    ]
   }
 ];

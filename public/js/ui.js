@@ -58,7 +58,7 @@ CV.UI = (function () {
 
   /* Écran de victoire (fin de module, de jour, de boss). */
   function victory(container, opts) {
-    confetti();
+    if (opts.stars) confetti();   // pas de feu d'artifice si 0 étoile (niveau passé / raté)
     container.innerHTML = "";
     const box = h("div", { class: "victory" },
       h("div", { class: "victory-emoji" }, opts.emoji || "🏆"),

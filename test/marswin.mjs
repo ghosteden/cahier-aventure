@@ -1,0 +1,34 @@
+import http from "http"; import fs from "fs"; import path from "path";
+import { chromium } from "playwright";
+const ROOT=path.resolve("public"), SHOTS=path.resolve("test/shots");
+const T={".html":"text/html",".css":"text/css",".js":"text/javascript",".png":"image/png",".webmanifest":"application/manifest+json"};
+const srv=http.createServer((q,r)=>{let p=path.join(ROOT,decodeURIComponent(q.url.split("?")[0])); if(q.url==="/")p=path.join(ROOT,"index.html"); if(q.url.includes("/.netlify/")){r.writeHead(404);r.end();return;} fs.readFile(p,(e,d)=>{if(e){r.writeHead(404);r.end();return;} r.writeHead(200,{"Content-Type":T[path.extname(p)]||"application/octet-stream"});r.end(d);});});
+await new Promise(r=>srv.listen(8236,r));
+const errors=[]; const b=await chromium.launch();
+const page=await (await b.newContext({viewport:{width:414,height:900}})).newPage();
+page.on("pageerror",e=>errors.push("PAGEERROR: "+e.message));
+await page.goto("http://localhost:8236/index.html",{waitUntil:"domcontentloaded"});
+await page.waitForSelector("#app:not([hidden])");
+await page.fill("#login-name","Gabi"); await page.click('button:has-text("C\'est parti")');
+await page.waitForSelector(".map-viewport");
+await page.evaluate(()=>{const s=CV.Store.current(); s.currentDay=40; s.heroWorld=4; CV.Store.save();});
+await page.reload({waitUntil:"domcontentloaded"});
+await page.waitForSelector(".map-viewport");
+await page.evaluate(()=>{ CV.drawMix=()=>Array.from({length:14},()=>({type:"qcm",q:"2+2 ?",choices:["4","5","6"],answer:0})); });
+await page.waitForTimeout(500);
+await page.locator(".planet-hit").nth(3).click({force:true});
+await page.waitForSelector(".node-sheet");
+await page.click('.node-sheet button:has-text("Jouer"), .node-sheet button:has-text("Rejouer")');
+await page.waitForSelector(".planet-stage");
+for(let i=0;i<7;i++){ await page.locator(".choice").first().click(); await page.waitForTimeout(1000); }
+await page.waitForTimeout(1100);
+const s=await page.evaluate(()=>{
+  const st=document.querySelector(".planet-hero .hero-strip");
+  return st? { img:(st.style.backgroundImage.match(/rover-[a-z]+/)||["?"])[0], anim:st.style.animation } : "scène terminée";
+});
+console.log("À l'arrivée, le rover joue :", s);
+await page.screenshot({path:path.join(SHOTS,"mars-scan.png")});
+await page.waitForTimeout(2500);
+console.log("Écran final :", await page.locator(".planet-stage").count()? "encore en jeu" : "victoire ✅");
+console.log("Erreurs JS:", errors.length, errors.slice(0,3));
+await b.close(); srv.close();

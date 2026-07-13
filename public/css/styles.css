@@ -376,6 +376,26 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 .stone.boss { width: 74px; height: 74px; }
 .stone.boss .stone-num { font-size: 30px; }
 
+/* ESPACE : pas de pierre — ce sont les PLANÈTES du dessin qu'on clique.
+   Pas d'anneau : un cercle net ne colle jamais pile au disque dessiné. On pose un halo DIFFUS,
+   qui reste joli même si la zone déborde un peu de la planète. */
+.planet-hit {
+  position:absolute; transform: translate(-50%, -50%); border-radius:50%;
+  cursor:pointer; z-index:4;
+  background: radial-gradient(circle, rgba(140,200,255,.30) 40%, rgba(140,200,255,0) 72%);
+  animation: planetpulse 2.6s ease-in-out infinite;
+}
+@keyframes planetpulse { 0%,100% { opacity:.55 } 50% { opacity:1 } }
+/* Déjà explorée / passée / verrouillée : plus d'appel du pied — juste la pastille, halo éteint. */
+.planet-hit.done, .planet-hit.skipped, .planet-hit.locked { animation:none; background:none; }
+/* Pastille AU-DESSUS de la planète (étoiles, cadenas de Pluton, ⏭️ si on l'a passée) :
+   en dessous elle se perdrait dans le dessin, au-dessus elle se lit tout de suite. */
+.planet-hit .ph-badge {
+  position:absolute; left:50%; bottom:100%; margin-bottom:3px; transform:translateX(-50%);
+  font-size:13px; line-height:1; white-space:nowrap; pointer-events:none;
+  text-shadow:0 1px 3px #000, 0 0 6px #000;
+}
+
 /* Le personnage (sprite) */
 .hero-sprite {
   position:absolute; transform: translate(-50%, -88%);
@@ -439,7 +459,11 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 .hero-sprite {
   position:absolute; transform: translate(-50%, -82%); z-index:6; pointer-events:none;
 }
-.hero-token { position:relative; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+/* overflow:hidden = c'est CE cadre qui découpe une image dans la bande.
+   L'ombre portée est posée ici (et pas sur la bande) : sinon elle est calculée sur les 8 images
+   d'un coup et l'ombre du voisin bave dans la case affichée, où elle est coupée net. */
+.hero-token { position:relative; display:flex; align-items:center; justify-content:center; overflow:hidden;
+  filter: drop-shadow(0 5px 4px rgba(0,0,0,.55)); }
 /* Le sens du regard (miroir scaleX) est posé en inline par setHeroFacing(). */
 .hero-token .hero-img { width:100%; height:100%; object-fit:contain; display:block;
   filter: drop-shadow(0 5px 4px rgba(0,0,0,.55)); animation: herobob 1.1s ease-in-out infinite; }
@@ -447,13 +471,20 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 @keyframes herobob { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-7px) } }
 
 /* Sprite animé par planche : un strip (largeur = N frames × 100%) translaté en steps(N).
-   La largeur et l'animation sont posées en inline par setHeroMode(). */
-.hero-token .hero-strip {
+   La largeur et l'animation sont posées en inline par setSpriteMode().
+   Vaut aussi pour les objets (.prop-token) : nuages, astéroïdes, étoiles. */
+.hero-token .hero-strip, .prop-token .hero-strip {
   position:absolute; left:0; top:0; height:100%;
   background-repeat:no-repeat; background-size:100% 100%; background-position:left center;
-  filter: drop-shadow(0 5px 4px rgba(0,0,0,.55));
 }
 @keyframes spritestep { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+/* La fusée pivote pour suivre la courbe du chemin : on adoucit le changement d'angle. */
+.hero-sprite .hero-token { transition: transform .28s linear; }
+/* ESPACE : la fusée est pilotée image par image (orbites + paraboles). Elle est centrée sur sa
+   position (et non posée dessus comme un marcheur), et son angle est déjà lissé par le calcul :
+   une transition CSS ne ferait qu'ajouter du retard. */
+.hero-sprite.rocket { transform: translate(-50%, -50%); }
+.hero-sprite.rocket .hero-token { transition: none; }
 /* Sprite animé : pas de flottement, l'animation se joue sur place */
 .hero-sprite.anim { animation: none; }
 
@@ -497,6 +528,60 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 .edit-handle.sel { outline:3px solid #fff; box-shadow:0 0 8px 2px var(--pc,#fff); cursor:grabbing; }
 .pp-hint { font-size:11px; color:#bcd; line-height:1.4; margin:2px 0; }
 
+/* Espace : parcours d'une planète */
+.planet-scene { margin-bottom:10px; }
+.planet-stage {
+  position:relative; width:100%; aspect-ratio: 1376 / 768;
+  background-size:cover; background-position:center; background-repeat:no-repeat;
+  border-radius:16px; border:1px solid rgba(255,255,255,.12); overflow:hidden;
+}
+/* Lune : la scène est plus grande que la fenêtre et défile verticalement — les plateformes sont
+   donc grandes sans qu'on ait à grossir l'astronaute. La vue suit ses bonds. */
+.planet-scene.scroll {
+  max-height:56vh; overflow-y:auto; overflow-x:hidden;
+  border-radius:16px; border:1px solid rgba(255,255,255,.12); scrollbar-width:none;
+}
+.planet-scene.scroll::-webkit-scrollbar { display:none; }
+.planet-stage.vertical { aspect-ratio: 768 / 1376; width:100%; border:none; border-radius:0; }
+
+/* Mars : le désert est plus large que la fenêtre et défile horizontalement quand le rover roule.
+   Le fond garde son ratio (la scène aussi), il est juste vu de plus près. */
+.planet-scene.hscroll {
+  overflow-x:auto; overflow-y:hidden;
+  border-radius:16px; border:1px solid rgba(255,255,255,.12); scrollbar-width:none;
+}
+.planet-scene.hscroll::-webkit-scrollbar { display:none; }
+.planet-stage.wide { width:190%; border:none; border-radius:0; }
+/* .planet-hero porte la position (les pieds tombent sur le point relevé),
+   .planet-hop porte l'arc du saut : deux transforms séparés, sinon ils s'écrasent. */
+.planet-hero {
+  position:absolute; transform:translate(-50%, -100%);
+  transition: left .7s ease-in-out, top .7s ease-in-out;
+}
+.planet-hop.blocked { animation: cshake .5s; }
+.planet-hop.hopping { animation: planethop .75s ease-in-out; }
+@keyframes planethop { 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-42px) } }
+/* Pluton : jeu de récompense (fusée + objets qui défilent) */
+.reward-stage { cursor: none; touch-action: none; }
+.reward-ship {
+  position:absolute; left:18%; transform:translate(-50%,-50%); z-index:2;
+  transition: top .12s linear; pointer-events:none;
+}
+.reward-item { position:absolute; transform:translate(-50%,-50%); pointer-events:none; }
+
+/* Objets posés dans la scène (nuages de Vénus, rochers, astéroïdes…) */
+.prop-token { position:relative; overflow:hidden; }   /* comme .hero-token : découpe une image dans la bande */
+.planet-prop {
+  position:absolute; pointer-events:none;
+  /* Le point relevé = les pieds de l'astronaute. Les cellules ont de la marge transparente,
+     donc on remonte l'objet pour que sa partie VISIBLE arrive sous les pieds. */
+  transform: translate(-50%, -46%);
+}
+/* Vénus : les nuages ne sont pas des appuis, ils RECOUVRENT le paysage → centrés sur leur point. */
+.planet-prop.cover { transform: translate(-50%, -50%); }
+.planet-steps { text-align:center; font-weight:bold; font-size:13px; opacity:.85; margin-bottom:4px; }
+.planet-fact { font-size:13px; margin:0 0 10px; line-height:1.45; }
+
 /* Combat de boss */
 .combat-scene {
   display:flex; align-items:flex-end; justify-content:space-between; gap:6px;
@@ -504,12 +589,37 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
   background: linear-gradient(180deg, rgba(0,0,0,.15), rgba(0,0,0,.4));
   border:1px solid rgba(255,255,255,.12);
 }
+/* Arène dessinée : le décor du monde en fond, les combattants posés dessus */
+.combat-scene.has-bg {
+  background-size: cover; background-position: center bottom;
+  aspect-ratio: 16 / 9; min-height: 190px; padding: 0;
+}
+.combat-scene.has-bg::before {                  /* voile pour garder les cœurs lisibles */
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,0) 45%);
+}
+/* Les cœurs vont dans les coins hauts, pas au-dessus des têtes. */
+.combat-scene.has-bg .hp { position:absolute; top:8px; z-index:2; }
+.combat-scene.has-bg .hp-left  { left:10px; }
+.combat-scene.has-bg .hp-right { right:10px; }
+.combat-scene.has-bg .hp {
+  background: rgba(0,0,0,.45); color:#fff; border-radius:999px; padding:3px 10px;
+  text-shadow: 0 1px 2px rgba(0,0,0,.6);
+}
+/* Combattants posés au sol, ramenés vers le centre (sinon ils tombent dans les décors des bords). */
+.combat-scene.has-bg .fighter { position:absolute; bottom:15%; z-index:1; }
+/* Pas de translate ici : les animations de charge (lungeR/lungeL) et de tremblement (cshake)
+   écrivent sur transform et l'effaceraient. */
+.combat-scene.has-bg .fighter.hero { left:24%; }
+.combat-scene.has-bg .fighter.boss { right:24%; }
 .fighter-col { display:flex; flex-direction:column; align-items:center; gap:6px; width:42%; }
 .fighter {
-  width:84px; height:84px; background-repeat:no-repeat; font-size:62px; line-height:1;
-  display:flex; align-items:center; justify-content:center;
+  width:auto; height:auto; min-height:70px; background-repeat:no-repeat; font-size:54px; line-height:1;
+  display:flex; align-items:flex-end; justify-content:center;
   filter: drop-shadow(0 6px 5px rgba(0,0,0,.5));
 }
+/* Les planches de boss sont dessinées tournées vers la DROITE : miroir pour faire face au héros. */
+.boss-token { transform: scaleX(-1); }
 .fighter.hit { animation: cshake .4s; }
 .fighter.attack-r { animation: lungeR .45s; }
 .fighter.attack-l { animation: lungeL .45s; }
@@ -590,3 +700,23 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 }
 .numkey:active { transform:translateY(3px); box-shadow:0 1px 0 rgba(0,0,0,.2); }
 .numkey.del { background:#ffe0e6; color:#8a1430; }
+
+/* Petit bouton « passer » discret (sur fond clair : texte foncé, bien visible) */
+.skip-mini {
+  flex:none; align-self:flex-start;
+  background: rgba(0,0,0,.05); color:#8a7f9c; border:1px solid rgba(0,0,0,.12);
+  border-radius:99px; padding:5px 11px; font-size:12px; font-weight:bold;
+  cursor:pointer; font-family:var(--font); white-space:nowrap;
+}
+.skip-mini:hover { background: rgba(0,0,0,.09); }
+.skip-mini:active { transform:translateY(1px); }
+
+/* ---- Révisions libres ---- */
+.rev-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
+.rev-chip {
+  display:flex; align-items:center; gap:8px; text-align:left;
+  background:var(--card-solid); color:var(--ink); border:none; border-radius:14px;
+  padding:12px; font-family:var(--font); font-weight:bold; font-size:14px;
+  cursor:pointer; box-shadow:0 4px 0 rgba(0,0,0,.15); line-height:1.2;
+}
+.rev-chip:active { transform:translateY(2px); box-shadow:0 2px 0 rgba(0,0,0,.15); }

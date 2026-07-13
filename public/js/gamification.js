@@ -5,12 +5,15 @@
 window.CV = window.CV || {};
 
 CV.Game = (function () {
+  /* Étoiles selon la réussite (0 si mal réussi, jusqu'à 3) :
+     ≥90% → 3 · ≥65% → 2 · ≥40% → 1 · sinon 0. */
   function starsForScore(correct, total) {
-    if (total <= 0) return 1;
+    if (total <= 0) return 0;
     const r = correct / total;
     if (r >= 0.9) return 3;
-    if (r >= 0.6) return 2;
-    return 1;
+    if (r >= 0.65) return 2;
+    if (r >= 0.4) return 1;
+    return 0;
   }
 
   /* ---- Dates locales pour la série ---- */
@@ -89,18 +92,31 @@ CV.Game = (function () {
     return { stars, newBadges };
   }
 
-  /* ---- Récompense d'une journée terminée (toutes ses étapes) ---- */
-  function completeDay(state, dayObj, stars) {
+  /* ---- Récompense d'une journée terminée (toutes ses étapes) ----
+     skipped = le niveau a été « passé » sans être joué. On le retient : Pluton exige les
+     8 planètes JOUÉES. Un niveau déjà joué pour de vrai ne redevient jamais « passé ». */
+  function completeDay(state, dayObj, stars, skipped) {
     state.dayProgress = state.dayProgress || {};
     const prev = state.dayProgress[dayObj.day];
     const firstTime = !prev;
-    state.dayProgress[dayObj.day] = { done: true, stars: Math.max(prev ? prev.stars : 0, stars) };
+    const playedBefore = prev && prev.done && !prev.skipped;
+    state.dayProgress[dayObj.day] = {
+      done: true,
+      stars: Math.max(prev ? prev.stars : 0, stars),
+      skipped: !!skipped && !playedBefore
+    };
 
     if (firstTime) {
       state.stats.sessions = (state.stats.sessions || 0) + 1;
     }
-    // Avance le jour courant si on vient de finir le jour courant
-    if (dayObj.day >= (state.currentDay || 1) && dayObj.day < CV.TOTAL_DAYS) {
+    // Avance le jour courant si on vient de finir le jour courant.
+    // Monde en ordre libre (l'Espace) : les planètes se jouent dans le désordre, le curseur
+    // ne bouge donc pas — il ne saute sur le boss que quand les 8 sont jouées.
+    const wi = CV.worldIndexOfLevel(dayObj.day);
+    const freeLesson = CV.worldByIndex(wi).freeOrder && CV.nodeIndexOfLevel(dayObj.day) < CV.BOSS_NODE;
+    if (freeLesson) {
+      if (CV.plutonUnlocked(state)) state.currentDay = CV.levelNumber(wi, CV.BOSS_NODE);
+    } else if (dayObj.day >= (state.currentDay || 1) && dayObj.day < CV.TOTAL_DAYS) {
       state.currentDay = dayObj.day + 1;
     }
     state.flags = state.flags || {};

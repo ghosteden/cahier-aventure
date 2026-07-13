@@ -422,3 +422,187 @@ window.CV = window.CV || {};
     return pick([CV.gen.logicSize, CV.gen.logicNumber, CV.gen.logicAlpha, CV.gen.suiteMotifs, CV.gen.doubleEntry])();
   };
 })();
+
+/* =========================================================
+   Générateurs — nouvelles notions de FRANÇAIS (CE2)
+   ========================================================= */
+(function () {
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const PRON = ["je", "tu", "il", "elle", "nous", "vous", "ils", "elles"];
+  // Verbes en -er sans particularité d'orthographe (pas de -ger/-cer)
+  const ERV = [["chanter", "chant"], ["jouer", "jou"], ["regarder", "regard"], ["danser", "dans"],
+    ["parler", "parl"], ["sauter", "saut"], ["aimer", "aim"], ["travailler", "travaill"], ["dessiner", "dessin"]];
+
+  CV.gen.imparfait = function () {
+    const term = { je: "ais", tu: "ais", il: "ait", elle: "ait", nous: "ions", vous: "iez", ils: "aient", elles: "aient" };
+    const etre = { je: "étais", tu: "étais", il: "était", elle: "était", nous: "étions", vous: "étiez", ils: "étaient", elles: "étaient" };
+    const avoir = { je: "avais", tu: "avais", il: "avait", elle: "avait", nous: "avions", vous: "aviez", ils: "avaient", elles: "avaient" };
+    const p = pick(PRON), kind = pick(["er", "er", "etre", "avoir"]);
+    if (kind === "etre") return { type: "fill", q: "Imparfait : « " + cap(p) + " (être) ___ ». ", answer: [etre[p]], explain: p + " " + etre[p] };
+    if (kind === "avoir") return { type: "fill", q: "Imparfait : « " + cap(p) + " (avoir) ___ ». ", answer: [avoir[p]], explain: p + " " + avoir[p] };
+    const v = pick(ERV);
+    return { type: "fill", q: "Imparfait : « " + cap(p) + " (" + v[0] + ") ___ ». ", answer: [v[1] + term[p]], explain: p + " " + v[1] + term[p] };
+  };
+
+  CV.gen.futur = function () {
+    const term = { je: "ai", tu: "as", il: "a", elle: "a", nous: "ons", vous: "ez", ils: "ont", elles: "ont" };
+    const etre = { je: "serai", tu: "seras", il: "sera", elle: "sera", nous: "serons", vous: "serez", ils: "seront", elles: "seront" };
+    const avoir = { je: "aurai", tu: "auras", il: "aura", elle: "aura", nous: "aurons", vous: "aurez", ils: "auront", elles: "auront" };
+    const p = pick(PRON), kind = pick(["er", "er", "etre", "avoir"]);
+    if (kind === "etre") return { type: "fill", q: "Futur : « " + cap(p) + " (être) ___ ». ", answer: [etre[p]], explain: p + " " + etre[p] };
+    if (kind === "avoir") return { type: "fill", q: "Futur : « " + cap(p) + " (avoir) ___ ». ", answer: [avoir[p]], explain: p + " " + avoir[p] };
+    const v = pick(ERV);
+    return { type: "fill", q: "Futur : « " + cap(p) + " (" + v[0] + ") ___ ». ", answer: [v[0] + term[p]], explain: p + " " + v[0] + term[p] };
+  };
+
+  CV.gen.present3 = function () {
+    const T = {
+      faire: { je: "fais", tu: "fais", il: "fait", elle: "fait", nous: "faisons", vous: "faites", ils: "font", elles: "font" },
+      dire: { je: "dis", tu: "dis", il: "dit", elle: "dit", nous: "disons", vous: "dites", ils: "disent", elles: "disent" },
+      aller: { je: "vais", tu: "vas", il: "va", elle: "va", nous: "allons", vous: "allez", ils: "vont", elles: "vont" },
+      venir: { je: "viens", tu: "viens", il: "vient", elle: "vient", nous: "venons", vous: "venez", ils: "viennent", elles: "viennent" }
+    };
+    const verb = pick(Object.keys(T)), p = pick(PRON);
+    return { type: "fill", q: "Présent : « " + cap(p) + " (" + verb + ") ___ ». ", answer: [T[verb][p]], explain: p + " " + T[verb][p] };
+  };
+
+  CV.gen.onOnt = function () {
+    const sets = [
+      { q: "___ va au parc.", ch: ["On", "Ont"], a: 0, e: "« Il va » → on." },
+      { q: "___ mange à midi.", ch: ["On", "Ont"], a: 0, e: "« Il mange » → on." },
+      { q: "Les élèves ___ fini.", ch: ["ont", "on"], a: 0, e: "« avaient fini » → ont." },
+      { q: "Mes parents ___ une voiture.", ch: ["ont", "on"], a: 0, e: "« avaient » → ont." },
+      { q: "Les fleurs ___ belles.", ch: ["sont", "son"], a: 0, e: "« étaient belles » → sont." },
+      { q: "Il prend ___ cartable.", ch: ["son", "sont"], a: 0, e: "à lui → son." },
+      { q: "Elles ___ contentes.", ch: ["sont", "son"], a: 0, e: "« étaient » → sont." },
+      { q: "Léa cherche ___ chat.", ch: ["son", "sont"], a: 0, e: "à elle → son." },
+      { q: "Les chiens ___ dans le jardin.", ch: ["sont", "son"], a: 0, e: "« étaient » → sont." }
+    ];
+    const s = pick(sets);
+    return { type: "qcm", q: "Complète : « " + s.q + " »", choices: s.ch, answer: s.a, explain: s.e };
+  };
+
+  CV.gen.accordAdj = function () {
+    // [masc-sing, fém-sing, masc-plur, fém-plur]
+    const ADJ = [["noir", "noire", "noirs", "noires"], ["petit", "petite", "petits", "petites"],
+      ["grand", "grande", "grands", "grandes"], ["vert", "verte", "verts", "vertes"],
+      ["joli", "jolie", "jolis", "jolies"], ["bleu", "bleue", "bleus", "bleues"],
+      ["rond", "ronde", "ronds", "rondes"], ["méchant", "méchante", "méchants", "méchantes"]];
+    const M = ["chat", "chien", "ballon", "livre"], F = ["fleur", "voiture", "table", "pomme"];
+    const a = pick(ADJ), form = pick([0, 1, 2, 3]);
+    const det = ["un", "une", "des", "des"][form];
+    let noun = (form === 0 || form === 2) ? pick(M) : pick(F);
+    if (form >= 2) noun = noun + "s";
+    return { type: "fill", q: "Accorde : « " + det + " " + noun + " (" + a[0] + ") → " + det + " " + noun + " ___ »", answer: [a[form]], explain: "→ " + a[form] };
+  };
+
+  // Ces notions utilisent des questions générées :
+  CV.GEN_MAP["fr-imparfait"] = [["imparfait", 11]];
+  CV.GEN_MAP["fr-futur"] = [["futur", 11]];
+  CV.GEN_MAP["fr-onont"] = [["onOnt", 11]];
+  CV.GEN_MAP["fr-accord-adj"] = [["accordAdj", 11]];
+  CV.GEN_MAP["fr-present3"] = [["present3", 6], ["conjug", 5]];
+})();
+
+/* =========================================================
+   Générateurs — 2e lot (français + maths CE2)
+   ========================================================= */
+(function () {
+  const R = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const shuf = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+  /* ---- MATHS ---- */
+  CV.gen.mulPose = function () { const a = R(11, 49), b = R(2, 9); return { type: "calcul", q: a + " × " + b + " = ?", answer: a * b, explain: a + " × " + b + " = " + (a * b) }; };
+
+  CV.gen.division = function () {
+    const b = R(2, 9), q = R(2, 9), a = b * q;
+    const s = pick([a + " ÷ " + b + " = ?", "Partage " + a + " en " + b + " parts égales : " + a + " ÷ " + b + " = ?", "Combien de fois " + b + " dans " + a + " ?"]);
+    return { type: "calcul", q: s, answer: q, explain: b + " × " + q + " = " + a };
+  };
+
+  CV.gen.fractions = function () {
+    if (Math.random() < 0.5) { const n = R(2, 25) * 2; return { type: "calcul", q: "La moitié de " + n + " = ?", answer: n / 2, explain: n + " ÷ 2 = " + (n / 2) }; }
+    const n = R(2, 12) * 4; return { type: "calcul", q: "Le quart de " + n + " = ?", answer: n / 4, explain: n + " ÷ 4 = " + (n / 4) };
+  };
+
+  CV.gen.doublesMoities = function () {
+    if (Math.random() < 0.5) { const n = R(3, 50); return { type: "calcul", q: "Le double de " + n + " = ?", answer: n * 2, explain: n + " × 2 = " + (n * 2) }; }
+    const n = R(2, 30) * 2; return { type: "calcul", q: "La moitié de " + n + " = ?", answer: n / 2, explain: n + " ÷ 2 = " + (n / 2) };
+  };
+
+  CV.gen.pairsImpairs = function () {
+    if (Math.random() < 0.5) { const n = R(10, 99); return { type: "truefalse", q: "Le nombre " + n + " est pair.", answer: n % 2 === 0, explain: n + " finit par " + (n % 10) + " → " + (n % 2 === 0 ? "pair" : "impair") }; }
+    const want = pick([0, 1]);
+    let good; do { good = R(10, 99); } while (good % 2 !== want);
+    const others = []; while (others.length < 2) { let n; do { n = R(10, 99); } while (n % 2 === want || n === good || others.indexOf(n) >= 0); others.push(n); }
+    const ch = shuf([good].concat(others)).map(String);
+    return { type: "qcm", q: "Lequel est " + (want === 0 ? "pair" : "impair") + " ?", choices: ch, answer: ch.indexOf(String(good)), explain: good + " est " + (want === 0 ? "pair" : "impair") };
+  };
+
+  CV.gen.calculMental = function () {
+    return pick([
+      function () { const a = R(1, 9); return { type: "calcul", q: "Complète à 10 : " + a + " + ? = 10", answer: 10 - a, explain: a + " + " + (10 - a) + " = 10" }; },
+      function () { const a = R(1, 9) * 10; return { type: "calcul", q: "Complète à 100 : " + a + " + ? = 100", answer: 100 - a, explain: a + " + " + (100 - a) + " = 100" }; },
+      function () { const a = R(10, 89); return { type: "calcul", q: a + " + 10 = ?", answer: a + 10, explain: "on ajoute 1 dizaine" }; },
+      function () { const a = R(20, 99); return { type: "calcul", q: a + " − 10 = ?", answer: a - 10, explain: "on enlève 1 dizaine" }; }
+    ])();
+  };
+
+  /* ---- FRANÇAIS ---- */
+  CV.gen.passecompose = function () {
+    const ERV = [["manger", "mang"], ["jouer", "jou"], ["chanter", "chant"], ["regarder", "regard"], ["danser", "dans"], ["dessiner", "dessin"], ["travailler", "travaill"]];
+    const aux = { je: "ai", tu: "as", il: "a", elle: "a", nous: "avons", vous: "avez", ils: "ont", elles: "ont" };
+    const P = Object.keys(aux), p = pick(P), v = pick(ERV);
+    const ans = aux[p] + " " + v[1] + "é";
+    return { type: "fill", q: "Passé composé : « " + (p === "je" ? "J' " : cap(p) + " ") + "(" + v[0] + ") ___ ». (2 mots)", answer: [ans], explain: p + " " + ans };
+  };
+
+  CV.gen.mbp = function () {
+    const items = [["cha_bre", "m", "chambre"], ["ta_bour", "m", "tambour"], ["ja_be", "m", "jambe"], ["po_pier", "m", "pompier"], ["ti_bre", "m", "timbre"], ["gri_per", "m", "grimper"], ["no_bre", "m", "nombre"], ["ca_pagne", "m", "campagne"], ["ora_ge", "n", "orange"], ["bra_che", "n", "branche"], ["mo_tagne", "n", "montagne"], ["ma_ger", "n", "manger"]];
+    const w = pick(items);
+    return { type: "qcm", q: "Complète avec m ou n : « " + w[0].replace("_", "__") + " »", choices: ["m", "n"], answer: w[1] === "m" ? 0 : 1, explain: "→ " + w[2] };
+  };
+
+  CV.gen.ouOu = function () {
+    const sets = [
+      { q: "Tu veux du thé ___ du café ?", ch: ["ou", "où"], a: 0, e: "« ou bien » → ou" },
+      { q: "___ habites-tu ?", ch: ["Ou", "Où"], a: 1, e: "un lieu → où" },
+      { q: "C'est la maison ___ je suis né.", ch: ["ou", "où"], a: 1, e: "le lieu → où" },
+      { q: "Rouge ___ bleu ?", ch: ["ou", "où"], a: 0, e: "un choix → ou" },
+      { q: "Léa range ___ affaires. (les siennes)", ch: ["ses", "ces"], a: 0, e: "à elle → ses" },
+      { q: "Regarde ___ nuages ! (ceux-là)", ch: ["ses", "ces"], a: 1, e: "ceux-là → ces" },
+      { q: "Il a perdu ___ clés. (les siennes)", ch: ["ses", "ces"], a: 0, e: "à lui → ses" }
+    ];
+    const s = pick(sets);
+    return { type: "qcm", q: "Complète : « " + s.q + " »", choices: s.ch, answer: s.a, explain: s.e };
+  };
+
+  CV.gen.typesPhrases = function () {
+    const sets = [
+      { q: "As-tu faim ?", a: "interrogative" }, { q: "Quelle belle journée !", a: "exclamative" },
+      { q: "Le chat dort.", a: "déclarative" }, { q: "Ferme la porte.", a: "impérative" },
+      { q: "Où vas-tu ?", a: "interrogative" }, { q: "Comme c'est joli !", a: "exclamative" },
+      { q: "Range ta chambre.", a: "impérative" }, { q: "Nous mangeons une pomme.", a: "déclarative" },
+      { q: "Tu viens avec moi ?", a: "interrogative" }, { q: "Attention, danger !", a: "exclamative" }
+    ];
+    const s = pick(sets);
+    const ch = shuf(["déclarative", "interrogative", "exclamative", "impérative"]);
+    return { type: "qcm", q: "Quel type de phrase : « " + s.q + " » ?", choices: ch, answer: ch.indexOf(s.a), explain: "→ " + s.a };
+  };
+
+  Object.assign(CV.GEN_MAP, {
+    "ma-multiplication-posee": [["mulPose", 12]],
+    "ma-division": [["division", 12]],
+    "ma-fractions": [["fractions", 10]],
+    "ma-doubles-moities": [["doublesMoities", 12]],
+    "ma-pairs-impairs": [["pairsImpairs", 10]],
+    "ma-calcul-mental": [["calculMental", 14]],
+    "fr-passecompose": [["passecompose", 11]],
+    "fr-mbp": [["mbp", 11]],
+    "fr-homophones2": [["ouOu", 11]],
+    "fr-types-phrases": [["typesPhrases", 11]]
+  });
+})();

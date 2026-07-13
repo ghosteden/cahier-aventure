@@ -3,3 +3,5 @@ node_modules/
 test/shots/
 *.log
 .DS_Store
+.playwright-mcp/
+public/assets/*.orig.png

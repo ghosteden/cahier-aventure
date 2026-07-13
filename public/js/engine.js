@@ -125,10 +125,10 @@ CV.Engine = (function () {
     }
 
     function footerContinue() {
-      return h("button", { class: "btn good block mt", onclick: () => {
-        const ok = body._lastOk;
-        next(ok);
-      } }, idx + 1 >= steps.length ? "Terminer ✅" : "Continuer →");
+      // Après une erreur, le bouton ne sert qu'à accuser réception de la correction.
+      const label = !body._lastOk ? "J'ai compris 👍"
+        : (idx + 1 >= steps.length ? "Terminer ✅" : "Continuer →");
+      return h("button", { class: "btn good block mt", onclick: () => next(body._lastOk) }, label);
     }
 
     function showFeedback(good, text) {
@@ -137,13 +137,19 @@ CV.Engine = (function () {
         h("strong", {}, good ? "Bravo ! ✅  " : "Presque ! ❌  "),
         text || "");
       body.appendChild(fb);
-      body.appendChild(footerContinue());
+      // Bonne réponse : on enchaîne tout seul, le clic de confirmation n'apprend rien.
+      // Mauvaise réponse : on garde le bouton, pour laisser le temps de LIRE la correction.
+      clearTimeout(body._nextT);
+      if (good) body._nextT = setTimeout(() => next(true), 900);
+      else body.appendChild(footerContinue());
     }
 
     function render() {
       markCur(idx);
+      clearTimeout(body._nextT);   // coupe l'enchaînement auto en cours, sinon il sauterait une question
       body.innerHTML = "";
       body._lastOk = false;
+      body._validated = false; // IMPORTANT : réarmer la validation à chaque nouvelle question
       const step = steps[idx];
       switch (step.type) {
         case "qcm":        return renderChoices(step, step.choices, step.answer);
@@ -202,6 +208,7 @@ CV.Engine = (function () {
         }
         body._validated = true;
         input.disabled = true;
+        btn.style.display = "none";        // la réponse est jouée : « Valider » n'a plus de sens
         input.style.borderColor = good ? "var(--good)" : "var(--bad)";
         const corr = Array.isArray(step.answer) ? step.answer[0] : step.answer;
         showFeedback(good, (step.explain || "") + (good ? "" : "  → Réponse : " + corr));
