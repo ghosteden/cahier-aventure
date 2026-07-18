@@ -110,7 +110,20 @@ Planches déjà reconstruites : `cloud-venus-*`, `platform-lune-*`, `asteroid-4/
 - **Neptune** : rafale de vent renforcée et **synchronisée** (le vent se lève avant le recul).
 - **Journée découverte : ABANDONNÉE** (la répartition des journées a été refaite, plus besoin).
 
+## Fait depuis (3e passe)
+
+- **Fiches restructurées** (`data/fiches.js`, 66 au total, toutes débloquables) :
+  fr+maths par journée · **sciences+culture au boss** de chaque monde 1-4 (mapping
+  `CV.WORLD_BONUS` par clé de monde) · **une fiche par planète** avec **lien Google**
+  (`CV.planetFiche`, kind "planet"). Débloquage : `fichesForLevel` (jour/planète),
+  `fichesForBoss` (boss). L'ancien `WORLD_FICHES` générique a été supprimé.
+- **2 jeux Tetris** (`CV.gen.tetrisMur` consigne à lire / `tetrisForme` libre), type moteur
+  `tetris` (pièces multi-cases, drag&drop, clic pour retirer). Grilles solubles garanties.
+- **Jupiter** refait en **attrape-diamants** (`playCatch`, `mode:"catch"`).
+- **Pluton** : fond en parallaxe + écran de fin qui montre le score/record.
+- **Dictée** exclue des étoiles de la journée.
+
 ## Reste à faire
 
-1. (rien de bloquant) — tester en vrai Uranus/Neptune/Pluton et les fiches.
-2. Optionnel : `rover-death.png` et `dragon-stand.png` sont là mais inutilisés — **on ignore**.
+1. (rien de bloquant) — tester en vrai les fiches (boss → sciences/culture, planètes → lien).
+2. Optionnel : `rover-death.png` et `dragon-stand.png` inutilisés — **on ignore**.

@@ -1813,11 +1813,8 @@ window.CV = window.CV || {};
     const state = Store.current();
     Game.completeDay(state, lv, stars, isSkip);
     saveHeroSpot(state, lv);
-    // Boss vaincu (au moins 1 étoile) → fiche du monde.
-    if (lv.isBoss && stars > 0 && CV.WORLD_FICHES) {
-      const wf = CV.WORLD_FICHES[CV.worldIndexOfLevel(lv.level)];
-      if (wf) unlockFiches(state, [wf.id]);
-    }
+    // Boss vaincu (au moins 1 étoile) → fiches de sciences et de culture du monde.
+    if (lv.isBoss && stars > 0 && CV.fichesForBoss) unlockFiches(state, CV.fichesForBoss(lv.level));
     Store.save();
     if (lv.isBoss) return worldCleared(lv, stars, correct, total);
     goto("#/carte");
@@ -1878,7 +1875,7 @@ window.CV = window.CV || {};
       const fg = h("div", { class: "fiche-grid" });
       all.forEach((f) => {
         const has = !!owned[f.id];
-        const cell = h("div", { class: "fiche-cell" + (has ? "" : " locked") + (f.kind === "world" ? " world" : "") },
+        const cell = h("div", { class: "fiche-cell" + (has ? "" : " locked") + (f.kind === "planet" ? " world" : "") },
           h("div", { class: "fiche-ico" }, has ? (f.icon || f.emoji) : "🔒"),
           h("div", { class: "fiche-t" }, has ? f.title : "À découvrir"));
         if (has) cell.addEventListener("click", () => openFiche(f.id));
@@ -1904,19 +1901,23 @@ window.CV = window.CV || {};
     const f = CV.ficheById(id);
     if (!f) return;
     const backdrop = h("div", { class: "sheet-backdrop", onclick: (e) => { if (e.target === backdrop) backdrop.remove(); } });
-    const SUBJ = { francais: "Français", maths: "Maths", sciences: "Sciences", culture: "Culture" };
+    const SUBJ = { francais: "Français", maths: "Maths", sciences: "Sciences", culture: "Culture", espace: "Planète" };
+    const kicker = f.kind === "planet" ? "Fiche de la planète" : (SUBJ[f.subject] || "Leçon");
+    const body = f.kind === "planet"
+      ? h("div", {},
+          h("p", { class: "fiche-body" }, f.text),
+          h("a", { class: "btn ghost block mt", href: f.link, target: "_blank", rel: "noopener" }, "🔎 En savoir plus sur Internet"))
+      : h("div", {},
+          h("div", { class: "fiche-block retenir" }, h("strong", {}, "À retenir : "), f.retenir),
+          f.exemple ? h("div", { class: "fiche-block exemple" }, h("strong", {}, "Exemple : "), f.exemple) : null,
+          f.astuce ? h("div", { class: "fiche-block astuce" }, h("strong", {}, "💡 Astuce : "), f.astuce) : null);
     const card = h("div", { class: "fiche-sheet" },
       h("div", { class: "fiche-sheet-head" },
         h("div", { class: "fiche-ico big" }, f.icon || f.emoji),
         h("div", {},
-          h("div", { class: "fiche-kicker" }, f.kind === "world" ? "Fiche du monde" : (SUBJ[f.subject] || "Leçon")),
+          h("div", { class: "fiche-kicker" }, kicker),
           h("h3", { style: { margin: "2px 0 0" } }, f.title))),
-      f.kind === "world"
-        ? h("p", { class: "fiche-body" }, f.text)
-        : h("div", {},
-            h("div", { class: "fiche-block retenir" }, h("strong", {}, "À retenir : "), f.retenir),
-            f.exemple ? h("div", { class: "fiche-block exemple" }, h("strong", {}, "Exemple : "), f.exemple) : null,
-            f.astuce ? h("div", { class: "fiche-block astuce" }, h("strong", {}, "💡 Astuce : "), f.astuce) : null),
+      body,
       h("button", { class: "btn block mt", onclick: () => backdrop.remove() }, "Fermer")
     );
     backdrop.appendChild(card);

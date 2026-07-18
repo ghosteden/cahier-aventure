@@ -1,24 +1,21 @@
 /* =========================================================
    FICHES DE CONNAISSANCE
-   Chaque leçon terminée débloque une fiche : un résumé « à retenir » de la notion.
-   Chaque boss vaincu débloque en plus une fiche de MONDE (le fait marquant du thème).
+   - Mondes 1 à 4 : chaque journée de leçon débloque la fiche « français » et « maths » de la
+     notion du jour ; le BOSS du monde débloque en plus une fiche de SCIENCES et une de CULTURE
+     en rapport avec le thème (préhistoire, mythologie, Moyen Âge, pirates).
+   - Monde 5 (Espace) : chaque planète visitée débloque sa fiche, avec un lien pour aller en
+     apprendre davantage sur Internet.
    Les fiches se consultent dans l'écran Trophées (collection).
    ========================================================= */
 window.CV = window.CV || {};
 
-/* Fait marquant débloqué après le boss de chaque monde (index = ordre des mondes). */
-CV.WORLD_FICHES = [
-  { id: "world-dino",   emoji: "🦖", title: "Le monde des dinosaures",
-    text: "Les dinosaures ont vécu il y a des millions d'années, bien avant les humains. Une énorme météorite les a fait disparaître il y a 66 millions d'années." },
-  { id: "world-ulysse", emoji: "⚡", title: "Les dieux et les héros",
-    text: "Les Grecs et les Vikings racontaient des mythes : des histoires de dieux comme Zeus ou Thor, et de héros comme Ulysse, pour expliquer le monde." },
-  { id: "world-chevaliers", emoji: "🏰", title: "Le temps des chevaliers",
-    text: "Au Moyen Âge, les chevaliers vivaient dans des châteaux forts. Ils portaient une armure et juraient fidélité à leur seigneur." },
-  { id: "world-pirate", emoji: "🏴‍☠️", title: "L'âge des pirates",
-    text: "Les pirates naviguaient sur toutes les mers pour chercher des trésors. Ils suivaient des cartes et hissaient un drapeau noir pour faire peur." },
-  { id: "world-espace", emoji: "🚀", title: "Le système solaire",
-    text: "Huit planètes tournent autour du Soleil : Mercure, Vénus, la Terre, Mars, Jupiter, Saturne, Uranus et Neptune. Pluton est une planète naine." }
-];
+/* Sciences + culture débloquées au boss de chaque monde (par clé de monde). */
+CV.WORLD_BONUS = {
+  dinosaure:  ["sc-vivant", "sc-corps", "cu-temps", "cu-frise"],
+  ulysse:     ["sc-systeme-solaire", "sc-saisons", "cu-geo", "cu-anglais"],
+  chevaliers: ["sc-matiere", "sc-electricite", "cu-carte", "cu-emc"],
+  pirate:     ["sc-eau", "sc-alimentation", "cu-logique"]
+};
 
 /* Construit la fiche d'un module de leçon (résumé + exemple tirés de la leçon). */
 CV.ficheForModule = function (mod) {
@@ -35,9 +32,20 @@ CV.ficheForModule = function (mod) {
   };
 };
 
-/* Les notions RÉELLEMENT enseignées (leçons des journées) : ce sont les seules dont la fiche
-   peut se débloquer. Les modules de sciences/culture ne sont jamais des leçons → pas de fiche
-   fantôme impossible à obtenir. */
+/* Fiche d'une planète (Espace) : le fait marquant + un lien pour en apprendre plus. */
+CV.planetFiche = function (pl) {
+  return {
+    id: "planet-" + pl.key,
+    kind: "planet",
+    icon: pl.emoji,
+    title: pl.name,
+    subject: "espace",
+    text: pl.fact,
+    link: "https://www.google.com/search?q=" + encodeURIComponent(pl.name + " planète espace")
+  };
+};
+
+/* Les notions fr/maths RÉELLEMENT enseignées (leçons des journées des mondes 1-4). */
 CV._taughtIds = null;
 CV.taughtModuleIds = function () {
   if (CV._taughtIds) return CV._taughtIds;
@@ -56,26 +64,32 @@ CV.taughtModuleIds = function () {
   return set;
 };
 
-/* Toutes les fiches de la collection (débloquées + à découvrir). */
+/* Toute la collection (débloquées + à découvrir) : fr/maths enseignés + sciences/culture des
+   boss + une fiche par planète. */
 CV._allFiches = null;
 CV.allFiches = function () {
   if (CV._allFiches) return CV._allFiches;
-  const out = [];
-  CV.WORLD_FICHES.forEach((f) => out.push(Object.assign({ kind: "world" }, f)));
-  const taught = CV.taughtModuleIds();
-  (CV.allModules ? CV.allModules() : []).forEach((m) => {
-    if (!taught.has(m.id)) return;                 // seulement les notions vraiment enseignées
-    const f = CV.ficheForModule(m);
-    if (f) out.push(Object.assign({ kind: "module" }, f));
-  });
+  const out = [], seen = {};
+  const addModule = (id, kind) => {
+    if (seen[id]) return;
+    const f = CV.ficheForModule(CV.getModule(id));
+    if (f) { seen[id] = 1; out.push(Object.assign({ kind: kind }, f)); }
+  };
+  CV.taughtModuleIds().forEach((id) => addModule(id, "module"));               // fr / maths
+  Object.values(CV.WORLD_BONUS).forEach((ids) => ids.forEach((id) => addModule(id, "bonus")));  // sciences / culture
+  (CV.PLANETS || []).forEach((pl) => out.push(CV.planetFiche(pl)));            // planètes
   CV._allFiches = out;
   return out;
 };
 
 CV.ficheById = function (id) { return CV.allFiches().find((f) => f.id === id) || null; };
 
-/* Fiches débloquées quand on termine un niveau donné (les modules-leçon de la journée). */
+/* Fiches débloquées quand on termine un niveau :
+   - planète (Espace) → la fiche de la planète ;
+   - journée classique → les modules-leçon (fr + maths) du jour. */
 CV.fichesForLevel = function (level) {
+  const pl = CV.planetForLevel ? CV.planetForLevel(level) : null;
+  if (pl) return ["planet-" + pl.key];
   const plan = CV.dayPlan ? CV.dayPlan(level) : null;
   if (!plan) return [];
   const ids = [];
@@ -83,4 +97,11 @@ CV.fichesForLevel = function (level) {
     if (s.moduleId) { const f = CV.ficheForModule(CV.getModule(s.moduleId)); if (f) ids.push(f.id); }
   });
   return ids;
+};
+
+/* Fiches débloquées quand on bat le boss d'un monde (sciences + culture du thème). */
+CV.fichesForBoss = function (level) {
+  const w = CV.worldByIndex(CV.worldIndexOfLevel(level));
+  const ids = (w && CV.WORLD_BONUS[w.key]) || [];
+  return ids.map((id) => "mod-" + id);
 };
