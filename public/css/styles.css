@@ -740,7 +740,7 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 
 /* Jeux Tetris : plateau + pièces multi-cases */
 .tt-board { position:relative; margin:10px auto; touch-action:none; }
-.tt-cell { position:absolute; box-sizing:border-box; }
+.tt-cell { position:absolute; box-sizing:border-box; touch-action:none; }
 .tt-cell.void { background:transparent; }
 .tt-cell:not(.void) { border:1px solid #d8cff0; background:#faf8ff; border-radius:4px; }
 .tt-cell.filled { border-color:rgba(0,0,0,.15); border-radius:5px; box-shadow: inset 0 -3px 0 rgba(0,0,0,.15); cursor:pointer; }

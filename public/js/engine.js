@@ -523,21 +523,28 @@ CV.Engine = (function () {
         });
         return el;
       }
-      function attachDrag(el, pid) {
-        el.addEventListener("pointerdown", (e) => {
-          if (body._validated) return;
-          dragPid = pid;
-          clone = miniPiece(pieceById(pid), CELL); clone.classList.add("tt-drag");
-          document.body.appendChild(clone); moveClone(e);
-          try { el.setPointerCapture(e.pointerId); } catch (_) {}
-          e.preventDefault();
-        });
-        el.addEventListener("pointermove", (e) => { if (dragPid === pid) moveClone(e); });
-        el.addEventListener("pointerup", (e) => { if (dragPid === pid) dropPiece(e); });
-        el.addEventListener("pointercancel", () => { cleanup(); render(); });
+      // Un seul modèle de glisser (écouteurs au niveau window) : marche depuis le bac ET depuis
+      // le plateau (on reprend une pièce déjà posée pour la redéplacer).
+      function onDragMove(e) { moveClone(e); }
+      function onDragUp(e) {
+        window.removeEventListener("pointermove", onDragMove);
+        window.removeEventListener("pointerup", onDragUp);
+        window.removeEventListener("pointercancel", onDragUp);
+        dropPiece(e);
+      }
+      function beginDrag(pid, e) {
+        if (body._validated) return;
+        dragPid = pid;
+        clone = miniPiece(pieceById(pid), CELL); clone.classList.add("tt-drag");
+        document.body.appendChild(clone); moveClone(e);
+        window.addEventListener("pointermove", onDragMove);
+        window.addEventListener("pointerup", onDragUp);
+        window.addEventListener("pointercancel", onDragUp);
+        e.preventDefault();
       }
       function dropPiece(e) {
-        const pid = dragPid, p = pieceById(pid);
+        const pid = dragPid; if (pid == null) return;
+        const p = pieceById(pid);
         const r0 = boardEl.getBoundingClientRect();
         const [hr, wc] = dims(p);
         // cellule visée = sous le doigt, ramenée pour centrer la pièce
@@ -561,12 +568,22 @@ CV.Engine = (function () {
           if (owner[k]) {
             cell.classList.add("filled");
             cell.style.background = pieceById(owner[k]).color;
-            cell.addEventListener("click", () => { if (!body._validated) { removePiece(owner[k]); render(); } });
+            // Reprendre une pièce posée pour la redéplacer (on la retire puis on la traîne).
+            cell.addEventListener("pointerdown", (e) => {
+              if (body._validated) return;
+              const pid = owner[k];
+              removePiece(pid); render();
+              beginDrag(pid, e);
+            });
           }
           boardEl.appendChild(cell);
         }
         trayEl.innerHTML = "";
-        tray.forEach((pid) => { const el = miniPiece(pieceById(pid), 22); attachDrag(el, pid); trayEl.appendChild(el); });
+        tray.forEach((pid) => {
+          const el = miniPiece(pieceById(pid), 22);
+          el.addEventListener("pointerdown", (e) => beginDrag(pid, e));
+          trayEl.appendChild(el);
+        });
       }
       render();
 
