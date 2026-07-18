@@ -35,13 +35,36 @@ CV.ficheForModule = function (mod) {
   };
 };
 
-/* Toutes les fiches possibles (pour la collection : débloquées + à découvrir). */
+/* Les notions RÉELLEMENT enseignées (leçons des journées) : ce sont les seules dont la fiche
+   peut se débloquer. Les modules de sciences/culture ne sont jamais des leçons → pas de fiche
+   fantôme impossible à obtenir. */
+CV._taughtIds = null;
+CV.taughtModuleIds = function () {
+  if (CV._taughtIds) return CV._taughtIds;
+  const set = new Set();
+  if (CV.buildProgram && CV.dayPlan) {
+    CV.buildProgram().forEach((lv) => {
+      if (lv.isBoss) return;
+      const plan = CV.dayPlan(lv.level);
+      if (!plan) return;
+      plan.steps.forEach((s) => {
+        if (s.moduleId) { const m = CV.getModule(s.moduleId); if (m && !m.isDictee) set.add(s.moduleId); }
+      });
+    });
+  }
+  CV._taughtIds = set;
+  return set;
+};
+
+/* Toutes les fiches de la collection (débloquées + à découvrir). */
 CV._allFiches = null;
 CV.allFiches = function () {
   if (CV._allFiches) return CV._allFiches;
   const out = [];
   CV.WORLD_FICHES.forEach((f) => out.push(Object.assign({ kind: "world" }, f)));
+  const taught = CV.taughtModuleIds();
   (CV.allModules ? CV.allModules() : []).forEach((m) => {
+    if (!taught.has(m.id)) return;                 // seulement les notions vraiment enseignées
     const f = CV.ficheForModule(m);
     if (f) out.push(Object.assign({ kind: "module" }, f));
   });

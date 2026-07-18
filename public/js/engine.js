@@ -159,6 +159,7 @@ CV.Engine = (function () {
         case "match":      return renderMatch(step);
         case "logic":      return renderLogic(step);
         case "place":      return renderPlace(step);
+        case "tetris":     return renderTetris(step);
         case "dictee":     return renderDictee(step);
         default:           return next(true);
       }
@@ -462,6 +463,127 @@ CV.Engine = (function () {
           const el = boardHost.querySelector('.place-zone[data-zid="' + z.id + '"]');
           if (el) el.classList.add(ok ? "ok" : "ko");
         });
+        showFeedback(good, step.explain || (good ? "" : "Regarde bien la consigne."));
+      };
+      body.appendChild(h("button", { class: "btn block mt", onclick: validate }, "Valider"));
+    }
+
+    /* ---- Tetris : poser des pièces multi-cases pour remplir une forme ----
+       mode "exact"  : chaque pièce doit aller à l'emplacement décrit par la consigne.
+       mode "free"   : remplir entièrement la forme, peu importe l'agencement. */
+    function renderTetris(step) {
+      if (step._from) body.appendChild(h("div", { class: "pill" }, step._from));
+      body.appendChild(h("div", { class: "question" }, step.q || "Construis la forme."));
+      if (step.instruction) body.appendChild(h("div", { class: "logic-instr", html: "📋 " + step.instruction }));
+
+      const R = step.rows, C = step.cols, CELL = 34;
+      const target = new Set(step.target || (function () { const a = []; for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) a.push(r + "," + c); return a; })());
+      const placed = {};                 // pieceId -> { anchor:[r,c], cells:[[r,c]...] }
+      const owner = {};                  // "r,c" -> pieceId
+      let tray = step.pieces.map((p) => p.id);
+      const pieceById = (id) => step.pieces.find((p) => p.id === id);
+
+      const boardEl = h("div", { class: "tt-board", style: { width: C * CELL + "px", height: R * CELL + "px" } });
+      body.appendChild(boardEl);
+      body.appendChild(h("div", { class: "muted center", style: { fontSize: "13px", margin: "6px 0" } }, "⬇️ Fais glisser les pièces dans la forme. Clique une pièce posée pour l'enlever."));
+      const trayEl = h("div", { class: "place-tray tt-tray" });
+      body.appendChild(trayEl);
+
+      // dimensions d'une pièce (en cases)
+      function dims(p) { let mr = 0, mc = 0; p.cells.forEach(([r, c]) => { mr = Math.max(mr, r); mc = Math.max(mc, c); }); return [mr + 1, mc + 1]; }
+      function canPlace(p, ar, ac) {
+        return p.cells.every(([dr, dc]) => {
+          const r = ar + dr, c = ac + dc, k = r + "," + c;
+          return r >= 0 && r < R && c >= 0 && c < C && target.has(k) && !owner[k];
+        });
+      }
+      function doPlace(pid, ar, ac) {
+        const p = pieceById(pid), cells = p.cells.map(([dr, dc]) => [ar + dr, ac + dc]);
+        placed[pid] = { anchor: [ar, ac], cells };
+        cells.forEach(([r, c]) => (owner[r + "," + c] = pid));
+        tray = tray.filter((x) => x !== pid);
+      }
+      function removePiece(pid) {
+        const pl = placed[pid]; if (!pl) return;
+        pl.cells.forEach(([r, c]) => delete owner[r + "," + c]);
+        delete placed[pid]; if (tray.indexOf(pid) < 0) tray.push(pid);
+      }
+
+      let dragPid = null, clone = null;
+      function moveClone(e) { if (clone) { clone.style.left = (e.clientX - CELL) + "px"; clone.style.top = (e.clientY - CELL) + "px"; } }
+      function cleanup() { if (clone) { clone.remove(); clone = null; } dragPid = null; }
+      function miniPiece(p, cell) {
+        const [hr, wc] = dims(p);
+        const el = h("div", { class: "tt-piece", style: { width: wc * cell + "px", height: hr * cell + "px" } });
+        p.cells.forEach(([r, c]) => {
+          const b = h("div", { class: "tt-block" });
+          b.style.left = c * cell + "px"; b.style.top = r * cell + "px";
+          b.style.width = cell + "px"; b.style.height = cell + "px"; b.style.background = p.color;
+          el.appendChild(b);
+        });
+        return el;
+      }
+      function attachDrag(el, pid) {
+        el.addEventListener("pointerdown", (e) => {
+          if (body._validated) return;
+          dragPid = pid;
+          clone = miniPiece(pieceById(pid), CELL); clone.classList.add("tt-drag");
+          document.body.appendChild(clone); moveClone(e);
+          try { el.setPointerCapture(e.pointerId); } catch (_) {}
+          e.preventDefault();
+        });
+        el.addEventListener("pointermove", (e) => { if (dragPid === pid) moveClone(e); });
+        el.addEventListener("pointerup", (e) => { if (dragPid === pid) dropPiece(e); });
+        el.addEventListener("pointercancel", () => { cleanup(); render(); });
+      }
+      function dropPiece(e) {
+        const pid = dragPid, p = pieceById(pid);
+        const r0 = boardEl.getBoundingClientRect();
+        const [hr, wc] = dims(p);
+        // cellule visée = sous le doigt, ramenée pour centrer la pièce
+        const cr = Math.round((e.clientY - r0.top) / CELL - hr / 2);
+        const cc = Math.round((e.clientX - r0.left) / CELL - wc / 2);
+        let done = false;
+        // dépôt tolérant : on essaie la cellule visée puis ses voisines
+        for (let dr = -1; dr <= 1 && !done; dr++) for (let dc = -1; dc <= 1 && !done; dc++) {
+          if (canPlace(p, cr + dr, cc + dc)) { doPlace(pid, cr + dr, cc + dc); done = true; }
+        }
+        cleanup(); render();
+      }
+
+      function render() {
+        boardEl.innerHTML = "";
+        for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+          const k = r + "," + c, inTarget = target.has(k);
+          const cell = h("div", { class: "tt-cell" + (inTarget ? "" : " void") });
+          cell.style.left = c * CELL + "px"; cell.style.top = r * CELL + "px";
+          cell.style.width = CELL + "px"; cell.style.height = CELL + "px";
+          if (owner[k]) {
+            cell.classList.add("filled");
+            cell.style.background = pieceById(owner[k]).color;
+            cell.addEventListener("click", () => { if (!body._validated) { removePiece(owner[k]); render(); } });
+          }
+          boardEl.appendChild(cell);
+        }
+        trayEl.innerHTML = "";
+        tray.forEach((pid) => { const el = miniPiece(pieceById(pid), 22); attachDrag(el, pid); trayEl.appendChild(el); });
+      }
+      render();
+
+      const validate = () => {
+        if (body._validated) return;
+        if (tray.length) { CV.UI.toast("Place toutes les pièces d'abord 🙂"); return; }
+        body._validated = true;
+        let good = true;
+        if (step.mode === "exact") {
+          step.pieces.forEach((p) => {
+            const sol = step.solution[p.id], pl = placed[p.id];
+            if (!pl || pl.anchor[0] !== sol[0] || pl.anchor[1] !== sol[1]) good = false;
+          });
+        } else {
+          good = [...target].every((k) => owner[k]);   // forme entièrement remplie
+        }
+        boardEl.classList.add(good ? "tt-ok" : "tt-ko");
         showFeedback(good, step.explain || (good ? "" : "Regarde bien la consigne."));
       };
       body.appendChild(h("button", { class: "btn block mt", onclick: validate }, "Valider"));

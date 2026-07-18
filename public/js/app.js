@@ -1076,6 +1076,7 @@ window.CV = window.CV || {};
     // boss, mais ce n'est pas un combat — c'est le jeu de récompense.
     const planet = CV.planetForLevel ? CV.planetForLevel(level) : null;
     if (planet && planet.mode === "reward") return playReward(lv, planet);
+    if (planet && planet.mode === "catch") return playCatch(lv, planet);
     if (lv.isBoss) return playBoss(lv);
     if (planet && planet.points && planet.points.length > 1) return playPlanet(lv, planet);
     renderDayProgram(level);
@@ -1101,7 +1102,7 @@ window.CV = window.CV || {};
     c.appendChild(h("p", { class: "center muted", style: { marginTop: "-4px", fontSize: "13px" } },
       "Glisse ton doigt (ou les flèches ↑ ↓) pour piloter."));
 
-    let shipY = 50, shipV = 0, score = 0, running = true, last = 0, spawnAt = 0;
+    let shipY = 50, shipV = 0, score = 0, running = true, last = 0, spawnAt = 0, bgX = 0;
     const items = [];                       // { el, x, y, speed, kind, spec, dead }
     const remaining = () => Math.max(0, Math.ceil(p.duration - elapsed / 1000));
     let elapsed = 0;
@@ -1163,6 +1164,10 @@ window.CV = window.CV || {};
       const dt = Math.min(50, t - last); last = t; elapsed += dt;
       if (elapsed >= p.duration * 1000) return end();
 
+      // Fond qui défile plus lentement que les astéroïdes → effet de profondeur (parallaxe).
+      bgX -= 0.03 * dt;
+      stage.style.backgroundPositionX = bgX + "px";
+
       // Gravité constante vers le bas ; la poussée (appui maintenu) la fait remonter.
       const s = dt / 1000;
       shipV += (thrusting ? -190 : 105) * s;             // %/s² : chute lente, poussée plus forte
@@ -1197,13 +1202,95 @@ window.CV = window.CV || {};
     }
     function end() {
       running = false; unbind();
+      const st = Store.current();
+      st.best = st.best || {};
+      const prev = st.best.pluton || 0;
+      const record = score > prev;
+      if (record) st.best.pluton = score;
       UI.confetti();
       UI.toast("Score : " + score + " ! 🚀");
-      setTimeout(() => finishDay(lv, 3, score, score), 900);   // récompense : toujours 3 étoiles
+      // Récompense : toujours 3 étoiles. On affiche le score, pas des « bonnes réponses ».
+      const line = "Tu as récolté " + score + " point" + (score > 1 ? "s" : "") + " 🚀"
+        + (record ? " — nouveau record ! 🏅" : (prev ? " (ton record : " + prev + ")" : ""));
+      setTimeout(() => finishDay(lv, 3, null, null, false, line), 900);
     }
 
     // si on quitte l'écran, on coupe la boucle
     window.addEventListener("hashchange", () => { running = false; unbind(); }, { once: true });
+  }
+
+  /* ---------- Jupiter : attrape les diamants qui tombent ----------
+     L'astronaute est au milieu. Bonne réponse → un diamant tombe et il court l'attraper.
+     Mauvaise réponse → le diamant tombe à côté, il n'y arrive pas. Objectif : p.target diamants. */
+  function playCatch(lv, p) {
+    const w = CV.worldByIndex(4);
+    const pool = CV.drawMix(p.gen || []);
+    const c = screen();
+    c.appendChild(backBar("#/carte", "Carte"));
+    c.appendChild(h("h2", { class: "section-title" }, p.emoji + " " + p.name));
+    if (!pool.length) { c.appendChild(h("div", { class: "card" }, h("p", {}, "Questions indisponibles."))); return; }
+
+    const target = p.target || 8, groundY = p.groundY || 80;
+    let caught = 0, total = 0, qi = 0, heroX = 50;
+
+    const tok = heroToken(w, 64);
+    const astro = h("div", { class: "catch-hero", style: { top: groundY + "%" } }, tok);
+    const stage = h("div", { class: "planet-stage", style: { backgroundImage: "url(" + p.bg + ")" } }, astro);
+    c.appendChild(h("div", { class: "planet-scene" }, stage));
+    const steps = h("div", { class: "planet-steps" });
+    c.appendChild(steps);
+    c.appendChild(h("p", { class: "center muted planet-fact" }, "💡 " + p.fact));
+    const qbox = h("div", { class: "card" });
+    c.appendChild(qbox);
+    c.appendChild(h("button", { class: "btn ghost small block mt", onclick: () => skipLevel(lv.level) }, "⏭️ Passer la planète (0 étoile)"));
+
+    const anim = (m, o) => { if (tok._setMode) tok._setMode(m, o || {}); };
+    function moveHero(x) { astro.style.transition = "left .55s ease"; astro.style.left = x + "%"; if (Math.abs(x - heroX) > 1) setHeroFacing(tok, x >= heroX); heroX = x; }
+    function fx(emo) { const f = h("div", { class: "combat-hitfx" }, emo); stage.appendChild(f); setTimeout(() => f.remove(), 600); }
+    function hud() { steps.textContent = "💎 Diamants attrapés : " + caught + " / " + target; }
+
+    astro.style.left = "50%"; hud();
+    nextQ();
+
+    function nextQ() {
+      if (caught >= target) return win();
+      const ex = pool[qi % pool.length]; qi++;
+      CV.Engine.run(qbox, [ex], {
+        compact: true,
+        onComplete: ({ correct }) => { total++; dropDiamond(12 + Math.random() * 76, correct); setTimeout(nextQ, 1500); }
+      });
+    }
+
+    function dropDiamond(dx, ok) {
+      const gem = propToken(p.gem.idle, 42);
+      gem.classList.add("catch-gem");
+      gem.style.left = dx + "%"; gem.style.top = "4%";
+      stage.appendChild(gem); gem._play({});
+      requestAnimationFrame(() => { gem.style.transition = "top 1.15s cubic-bezier(.4,0,.9,1)"; gem.style.top = (groundY - 2) + "%"; });
+      if (ok) {                       // il court sous le diamant et l'attrape
+        moveHero(dx); anim("walk");
+        setTimeout(() => anim("idle"), 600);
+        setTimeout(() => {
+          caught++; fx("💎"); anim("happy", { once: true }); hud();
+          gem.remove();
+          const burst = propToken(p.gem.collect, 42);
+          burst.classList.add("catch-gem");
+          burst.style.left = dx + "%"; burst.style.top = (groundY - 2) + "%";
+          stage.appendChild(burst); burst._play({ freeze: true });
+          setTimeout(() => burst.remove(), 600);
+        }, 1150);
+      } else {                        // le diamant s'écrase à côté, raté
+        anim("sad", { once: true });
+        setTimeout(() => { gem.style.transition = "opacity .3s"; gem.style.opacity = "0"; setTimeout(() => gem.remove(), 300); fx("💨"); }, 1150);
+      }
+    }
+
+    function win() {
+      const stars = Game.starsForScore(target, total);   // moins de ratés = plus d'étoiles
+      if (stars > 0) UI.confetti();
+      UI.toast("Tous les diamants de Jupiter ! " + p.emoji);
+      setTimeout(() => finishDay(lv, stars, target, total), 800);
+    }
   }
 
   function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
@@ -1550,7 +1637,7 @@ window.CV = window.CV || {};
     return fresh;
   }
 
-  function finishDay(lv, stars, correct, total, skipped) {
+  function finishDay(lv, stars, correct, total, skipped, subtitle) {
     const state = Store.current();
     const plutonWasLocked = !CV.plutonUnlocked(state);
     const r = Game.completeDay(state, lv, stars, skipped);
@@ -1567,7 +1654,8 @@ window.CV = window.CV || {};
       emoji: low ? "💪" : (stars === 3 ? "🌟" : "🎉"),
       title: low ? "Niveau terminé" : "Journée réussie !",
       stars: stars,
-      subtitle: low ? "Pas d'étoile cette fois — rejoue-le pour les gagner ! 💪"
+      subtitle: subtitle ? subtitle
+        : low ? "Pas d'étoile cette fois — rejoue-le pour les gagner ! 💪"
         : (correct != null ? (correct + " / " + total + " bonnes réponses sur la journée") : "Bravo, champion !"),
       badges: r.newBadges || [],
       extra: newFiches.length ? ("📇 " + newFiches.length + " nouvelle" + (newFiches.length > 1 ? "s" : "") + " fiche" + (newFiches.length > 1 ? "s" : "") + " de connaissance !") : null,

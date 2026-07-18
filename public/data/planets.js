@@ -152,14 +152,15 @@ CV.PLANETS = [
   },
   {
     key: "jupiter", name: "Jupiter", emoji: "🟠",
-    fact: "Jupiter est la plus grosse planète. Sa Grande Tache rouge est une tempête plus large que la Terre !",
+    fact: "Sur Jupiter, les scientifiques pensent qu'il pleut des diamants ! La pression y transforme le carbone en pierres précieuses.",
     bg: "assets/planet-jupiter.png",
-    intro: "Traverse la passerelle : sur Jupiter, la gravité écrase tout, impossible de sauter !",
-    // La passerelle fait toute la largeur : les 8 étapes sont réparties entre les deux bouts
-    // relevés (3,3 % → 95,3 %). Gravité énorme → il MARCHE, il ne saute jamais.
-    points: span([3.3, 79.6], [95.3, 79.9], 8),
-    moves: ["walk", "walk", "walk", "walk", "walk", "walk", "walk"],
-    stepWord: "Étape",
+    intro: "Attrape les diamants qui tombent ! Bonne réponse = tu cours l'attraper.",
+    // Mécanique « attrape » : l'astronaute est au milieu ; à chaque bonne réponse un diamant
+    // tombe et il se déplace pour l'attraper (pluie de diamants de Jupiter).
+    mode: "catch", target: 8, groundY: 80,
+    // diamant : sprite gem-blue (scintille en tombant, éclate quand attrapé)
+    gem: { idle: { strip: "assets/gem-blue-idle.png", frames: 4, dur: 0.8, cell: [176, 192] },
+           collect: { strip: "assets/gem-blue-collect.png", frames: 4, dur: 0.5, cell: [176, 192] } },
     gen: [["addBig", 3], ["subBig", 3], ["pluriel", 3], ["numeration", 3]]
   },
   {

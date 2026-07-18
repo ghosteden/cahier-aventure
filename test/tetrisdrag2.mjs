@@ -1,0 +1,38 @@
+import http from "http"; import fs from "fs"; import path from "path";
+import { chromium } from "playwright";
+const ROOT=path.resolve("public"), SHOTS=path.resolve("test/shots");
+const T={".html":"text/html",".css":"text/css",".js":"text/javascript",".png":"image/png",".webmanifest":"application/manifest+json"};
+const srv=http.createServer((q,r)=>{let p=path.join(ROOT,decodeURIComponent(q.url.split("?")[0])); if(q.url==="/")p=path.join(ROOT,"index.html"); if(q.url.includes("/.netlify/")){r.writeHead(404);r.end();return;} fs.readFile(p,(e,d)=>{if(e){r.writeHead(404);r.end();return;} r.writeHead(200,{"Content-Type":T[path.extname(p)]||"application/octet-stream"});r.end(d);});});
+await new Promise(r=>srv.listen(8251,r));
+const errors=[]; const b=await chromium.launch();
+const page=await (await b.newContext({viewport:{width:414,height:900}})).newPage();
+page.on("pageerror",e=>errors.push("PAGEERROR: "+e.message));
+await page.goto("http://localhost:8251/index.html",{waitUntil:"domcontentloaded"});
+await page.waitForSelector("#app:not([hidden])");
+await page.fill("#login-name","Gabi"); await page.click('button:has-text("C\'est parti")');
+await page.waitForSelector(".map-viewport");
+await page.evaluate(()=>{ CV.__t = CV.gen.tetrisMur(); const c=document.querySelector("#app"); c.innerHTML="";
+  const box=document.createElement("div"); box.className="card"; c.appendChild(box);
+  CV.Engine.run(box,[CV.__t],{onComplete:(r)=>{window.__res=r;}}); });
+await page.waitForSelector(".tt-board");
+const CELL=34;
+const ids = await page.evaluate(()=>CV.__t.pieces.map(p=>p.id));
+const dimsOf = (cells)=>{let hr=0,wc=0;cells.forEach(([r,c])=>{hr=Math.max(hr,r);wc=Math.max(wc,c);});return[hr+1,wc+1];};
+for (let k=0;k<ids.length;k++){
+  const p = await page.evaluate((i)=>{ const pc=CV.__t.pieces[i]; return {cells:pc.cells, sol:CV.__t.solution[pc.id]}; }, k);
+  const [hr,wc]=dimsOf(p.cells);
+  const board = await page.evaluate(()=>{ const r=document.querySelector(".tt-board").getBoundingClientRect(); return {x:r.left,y:r.top}; });
+  const src = await page.evaluate(()=>{ const el=document.querySelector(".tt-tray .tt-piece"); const r=el.getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}; });
+  const tx = board.x + (p.sol[1] + wc/2)*CELL, ty = board.y + (p.sol[0] + hr/2)*CELL;
+  await page.mouse.move(src.x, src.y); await page.mouse.down();
+  await page.mouse.move(src.x, src.y-10); await page.mouse.move((src.x+tx)/2,(src.y+ty)/2); await page.mouse.move(tx,ty); await page.mouse.move(tx,ty);
+  await page.mouse.up(); await page.waitForTimeout(200);
+  const filled = await page.evaluate(()=>document.querySelectorAll(".tt-cell.filled").length);
+  console.log("pièce "+(k+1)+"/"+ids.length+" déposée → cases remplies :", filled);
+}
+await page.click('button:has-text("Valider")');
+await page.waitForTimeout(300);
+const verdict = await page.evaluate(()=>{ const fb=document.querySelector(".feedback"); return fb?(fb.classList.contains("ok")?"BRAVO ✅":"raté ❌")+" — "+fb.textContent.slice(0,20):"(rien)"; });
+console.log("Validation :", verdict);
+console.log("Erreurs JS:", errors.length, errors.slice(0,3));
+await b.close(); srv.close();

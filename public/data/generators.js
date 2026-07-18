@@ -504,10 +504,90 @@ window.CV = window.CV || {};
     };
   };
 
+  /* Pièces façon Tetris (offsets de cases, normalisés en haut-gauche). */
+  const TETROS = [
+    { name: "carré",  cells: [[0, 0], [0, 1], [1, 0], [1, 1]] },
+    { name: "barre",  cells: [[0, 0], [0, 1], [0, 2]] },
+    { name: "L",      cells: [[0, 0], [1, 0], [1, 1]] },
+    { name: "T",      cells: [[0, 0], [0, 1], [0, 2], [1, 1]] },
+    { name: "S",      cells: [[0, 1], [0, 2], [1, 0], [1, 1]] },
+    { name: "coin",   cells: [[0, 0], [1, 0], [1, 1], [0, 1]] },
+    { name: "petit L",cells: [[0, 0], [1, 0]] }
+  ];
+  const TCOLORS = [{ c: "#e63946", n: "rouge" }, { c: "#3a7bd5", n: "bleue" }, { c: "#2a9d8f", n: "verte" },
+    { c: "#e8871e", n: "orange" }, { c: "#8e44ad", n: "violette" }, { c: "#00a8a8", n: "turquoise" }];
+  const pdims = (cells) => { let mr = 0, mc = 0; cells.forEach(([r, c]) => { mr = Math.max(mr, r); mc = Math.max(mc, c); }); return [mr + 1, mc + 1]; };
+
+  /* Jeu 1 — « Construis le mur » : suivre une CONSIGNE pour poser chaque brique au bon endroit. */
+  CV.gen.tetrisMur = function () {
+    const R = 4, C = 4;
+    const set = shuffleArr(TETROS.filter((t) => t.name !== "petit L").slice()).slice(0, 3);
+    const grid = Array.from({ length: R }, () => Array(C).fill(false));
+    const pieces = [], solution = {}, placedOrder = [];
+    let pid = 0;
+    for (const t of set) {
+      const [hr, wc] = pdims(t.cells);
+      const spots = [];
+      for (let r = 0; r + hr <= R; r++) for (let c = 0; c + wc <= C; c++) {
+        if (t.cells.every(([dr, dc]) => !grid[r + dr][c + dc])) spots.push([r, c]);
+      }
+      if (!spots.length) continue;
+      const [ar, ac] = pick(spots);
+      t.cells.forEach(([dr, dc]) => (grid[ar + dr][ac + dc] = true));
+      const id = "p" + pid, col = TCOLORS[pid % TCOLORS.length]; pid++;
+      pieces.push({ id, color: col.c, cells: t.cells, _name: t.name, _col: col.n, _pos: [ar, ac] });
+      solution[id] = [ar, ac];
+      placedOrder.push(id);
+    }
+    const target = [];
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) if (grid[r][c]) target.push(r + "," + c);
+    const rowName = ["tout en HAUT", "sur la 2ᵉ ligne", "sur la 3ᵉ ligne", "tout en BAS"];
+    const colName = ["à GAUCHE", "sur la 2ᵉ colonne", "sur la 3ᵉ colonne", "à DROITE"];
+    const consigne = pieces.map((p) => "• la pièce <b>" + p._name + " " + p._col + "</b> : son coin haut-gauche va " + rowName[p._pos[0]] + " et " + colName[p._pos[1]]).join("<br>");
+    return {
+      type: "tetris", mode: "exact", rows: R, cols: C, target,
+      q: "Construis le mur.",
+      instruction: "Pose chaque pièce à sa place :<br>" + consigne,
+      pieces: shuffleArr(pieces.map((p) => ({ id: p.id, color: p.color, cells: p.cells }))),
+      solution,
+      explain: "Chaque pièce avait sa place indiquée dans la consigne."
+    };
+  };
+
+  /* Jeu 2 — « Remplis la forme » : agencer librement les pièces pour recouvrir toute la forme. */
+  CV.gen.tetrisForme = function () {
+    const R = 4, C = 4;
+    // on construit une forme en posant des pièces, puis on redonne ces pièces à agencer librement
+    const set = shuffleArr(TETROS.slice()).slice(0, 4);
+    const grid = Array.from({ length: R }, () => Array(C).fill(false));
+    const pieces = []; let pid = 0;
+    for (const t of set) {
+      const [hr, wc] = pdims(t.cells);
+      const spots = [];
+      for (let r = 0; r + hr <= R; r++) for (let c = 0; c + wc <= C; c++) {
+        if (t.cells.every(([dr, dc]) => !grid[r + dr][c + dc])) spots.push([r, c]);
+      }
+      if (!spots.length) continue;
+      const [ar, ac] = pick(spots);
+      t.cells.forEach(([dr, dc]) => (grid[ar + dr][ac + dc] = true));
+      pieces.push({ id: "p" + pid, color: TCOLORS[pid % TCOLORS.length].c, cells: t.cells }); pid++;
+    }
+    const target = [];
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) if (grid[r][c]) target.push(r + "," + c);
+    return {
+      type: "tetris", mode: "free", rows: R, cols: C, target,
+      q: "Remplis la forme.",
+      instruction: "Agence toutes les pièces pour recouvrir <b>entièrement</b> la forme, sans dépasser.",
+      pieces: shuffleArr(pieces),
+      explain: "Il fallait emboîter les pièces pour combler chaque case."
+    };
+  };
+
   /* Choisit un jeu de logique au hasard. */
   CV.gen.logic = function () {
     return pick([CV.gen.logicSize, CV.gen.logicNumber, CV.gen.logicAlpha, CV.gen.suiteMotifs,
-      CV.gen.doubleEntry, CV.gen.deduction, CV.gen.symetrie, CV.gen.reproduction])();
+      CV.gen.doubleEntry, CV.gen.deduction, CV.gen.symetrie, CV.gen.reproduction,
+      CV.gen.tetrisMur, CV.gen.tetrisForme])();
   };
 })();
 
