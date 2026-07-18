@@ -1540,7 +1540,12 @@ window.CV = window.CV || {};
 
   /* Passer une seule étape : comptée comme faite mais sans points. */
   function skipStep(i) {
-    if (!confirm("Passer cette étape sans la faire ?\nTu perdras les étoiles de cette partie.")) return;
+    // La dictée ne compte pas dans les étoiles : la passer ne coûte rien.
+    const isDictee = daySession.plan.steps[i] && daySession.plan.steps[i].kind === "dictee";
+    const msg = isDictee
+      ? "Passer la dictée ?\n(Elle ne compte pas dans les étoiles.)"
+      : "Passer cette étape sans la faire ?\nTu perdras les étoiles de cette partie.";
+    if (!confirm(msg)) return;
     daySession.done[i] = { correct: 0, total: 0, skipped: true };
     renderDayProgram(daySession.level);
   }
