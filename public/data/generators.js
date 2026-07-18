@@ -434,47 +434,54 @@ window.CV = window.CV || {};
     const glyphs = sol.map((a) => a[0]);
     const tray = shuffleArr(sol.concat(distract).map((a) => a[0]));   // 8 animaux dans le bac
 
-    // Indices candidats, TOUS vrais pour la solution. lt:[A,B] => A à gauche de B (pos A < pos B).
+    // Indices candidats, TOUS vrais pour la solution ; chacun porte un test(p) sur les positions.
     const cand = [];
     for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
-      const A = sol[i], B = sol[j];
-      cand.push({ text: cap(B[1]) + " est à DROITE " + A[2] + ".", lt: [A[0], B[0]] });
-      cand.push({ text: cap(A[1]) + " est à GAUCHE " + B[2] + ".", lt: [A[0], B[0]] });
-      cand.push({ text: cap(B[1]) + " n'est jamais à GAUCHE " + A[2] + ".", lt: [A[0], B[0]] });
-      cand.push({ text: cap(A[1]) + " n'est jamais à DROITE " + B[2] + ".", lt: [A[0], B[0]] });
+      const A = sol[i], B = sol[j], lt = (p) => p[A[0]] < p[B[0]];
+      cand.push({ text: cap(B[1]) + " est à DROITE " + A[2] + ".", test: lt });
+      cand.push({ text: cap(A[1]) + " est à GAUCHE " + B[2] + ".", test: lt });
+      cand.push({ text: cap(B[1]) + " n'est jamais à GAUCHE " + A[2] + ".", test: lt });
+      cand.push({ text: cap(A[1]) + " n'est jamais à DROITE " + B[2] + ".", test: lt });
     }
     for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) for (let k = j + 1; k < N; k++) {
-      cand.push({ text: cap(sol[j][1]) + " est ENTRE " + sol[i][1] + " et " + sol[k][1] + ".", bt: [sol[i][0], sol[j][0], sol[k][0]] });
+      const a = sol[i][0], m = sol[j][0], c = sol[k][0];
+      cand.push({ text: cap(sol[j][1]) + " est ENTRE " + sol[i][1] + " et " + sol[k][1] + ".", test: (p) => p[a] < p[m] && p[m] < p[c] });
     }
+    // Indices d'extrémité (très clairs) : tout à gauche / tout à droite.
+    cand.push({ text: cap(sol[0][1]) + " est TOUT À GAUCHE.", test: (p) => p[sol[0][0]] === 0 });
+    cand.push({ text: cap(sol[N - 1][1]) + " est TOUT À DROITE.", test: (p) => p[sol[N - 1][0]] === N - 1 });
 
     // Permutations des N glyphes (120) pour vérifier l'UNICITÉ de la solution.
     const perms = (function perm(a) { if (a.length <= 1) return [a]; const out = []; a.forEach((x, i) => perm(a.slice(0, i).concat(a.slice(i + 1))).forEach((r) => out.push([x].concat(r)))); return out; })(glyphs);
-    const ok = (pm, clues) => { const p = {}; pm.forEach((g, idx) => (p[g] = idx)); return clues.every((c) => c.lt ? p[c.lt[0]] < p[c.lt[1]] : (p[c.bt[0]] < p[c.bt[1]] && p[c.bt[1]] < p[c.bt[2]])); };
+    const ok = (pm, clues) => { const p = {}; pm.forEach((g, idx) => (p[g] = idx)); return clues.every((c) => c.test(p)); };
 
-    // À chaque tour on prend l'indice le PLUS informatif (celui qui élimine le plus de
-    // possibilités) jusqu'à n'en laisser qu'une → jeu d'indices minimal (≈ 4).
+    // 1) On atteint l'unicité en prenant l'indice le plus informatif à chaque tour.
     const chosen = [], remaining = shuffleArr(cand);
     let count = perms.length;
     while (count > 1) {
       let best = null, bestN = count;
-      for (const c of remaining) {
-        const n = perms.filter((pm) => ok(pm, chosen.concat([c]))).length;
-        if (n < bestN) { bestN = n; best = c; }
-      }
+      for (const c of remaining) { const n = perms.filter((pm) => ok(pm, chosen.concat([c]))).length; if (n < bestN) { bestN = n; best = c; } }
       if (!best) break;
       chosen.push(best); remaining.splice(remaining.indexOf(best), 1); count = bestN;
+    }
+    // 2) On AJOUTE des indices (tous vrais, donc toujours une seule solution) pour que ce soit
+    //    bien clair et non ambigu à l'œil : au moins 5 indices en tout.
+    for (const c of remaining) {
+      if (chosen.length >= 5) break;
+      if (!chosen.some((x) => x.text === c.text)) chosen.push(c);
     }
     const clues = shuffleArr(chosen).map((c) => c.text);
     return {
       type: "order", q: "Range les animaux dans le bon ordre (de gauche à droite).",
       instruction: "Trouve l'ordre grâce aux indices :<br>• " + clues.join("<br>• ")
-        + "<br><i>⚠️ Certains animaux du bac ne servent pas.</i>",
+        + "<br><i>👉 Utilise seulement les animaux cités dans les indices (les autres ne servent pas).</i>",
       count: N, solution: glyphs, palette: tray,
       explain: "Le bon ordre : " + glyphs.join(" ") + "."
     };
   };
 
-  /* Symétrie : compléter la moitié droite pour qu'elle soit le miroir de la moitié gauche. */
+  /* Symétrie : compléter la moitié droite pour qu'elle soit le miroir de la moitié gauche.
+     Toutes les cases de droite sont identiques (aucun indice visuel) → on peut se tromper. */
   CV.gen.symetrie = function () {
     const COLORS = ["#e63946", "#3a7bd5", "#2a9d8f", "#e8871e", "#8e44ad"];
     const rows = 4, half = 3, cols = half * 2;           // axe entre col 2 et 3
@@ -482,21 +489,17 @@ window.CV = window.CV || {};
     for (let r = 0; r < rows; r++) for (let c = 0; c < half; c++) {
       if (Math.random() < 0.5) model.push({ row: r, col: c, color: pick(COLORS) });
     }
-    if (!model.length) model.push({ row: 1, col: 1, color: COLORS[0] });
-    const fixed = model.map((m) => ({ row: m.row, col: m.col, color: m.color, label: "" }));
-    // pour chaque case pleine à gauche → une case-miroir à droite à remplir
-    const zones = [], pieces = [];
-    model.forEach((m, i) => {
-      const mc = cols - 1 - m.col;                        // colonne miroir
-      zones.push({ id: "z" + i, row: m.row, col: mc, expect: m.color });
-      pieces.push({ id: "p" + i, key: m.color, color: m.color, label: "" });
-    });
+    if (model.length < 2) { model.length = 0; model.push({ row: 0, col: 0, color: COLORS[0] }, { row: 2, col: 1, color: COLORS[1] }); }
+    const fixed = model.map((m) => ({ row: m.row, col: m.col, color: m.color }));
+    const solutionAbs = {};                               // cases miroir à droite → couleur attendue
+    model.forEach((m) => { solutionAbs[m.row + "," + (cols - 1 - m.col)] = m.color; });
     return {
-      type: "place", layout: "grid", palette: true, q: "La symétrie.",
-      instruction: "Complète la moitié DROITE pour qu'elle soit le reflet de la gauche dans le miroir.",
-      grid: { rows, cols, axisCol: half, fixed },
-      zones, pieces: shuffleArr(pieces),
-      explain: "Chaque case se reflète de l'autre côté de l'axe, comme dans un miroir."
+      type: "build", exact: true, q: "La symétrie.",
+      instruction: "Peins la moitié DROITE pour qu'elle soit le reflet exact de la gauche (comme dans un miroir).",
+      rows, cols, lockCols: half, axisCol: half, count: model.length,
+      fixed, solutionAbs,
+      palette: COLORS.map((c) => ({ color: c })),
+      explain: "Chaque case se reflète de l'autre côté de l'axe doré."
     };
   };
 

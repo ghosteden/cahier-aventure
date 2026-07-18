@@ -646,7 +646,11 @@ CV.Engine = (function () {
       if (step.instruction) body.appendChild(h("div", { class: "logic-instr", html: "📋 " + step.instruction }));
 
       const R = step.rows, C = step.cols, CELL = 38, ERASE = "__erase__";
-      const fill = {};                    // "r,c" -> couleur
+      const fill = {};                    // "r,c" -> couleur (cases que le joueur remplit)
+      // Cases MODÈLE (fixes, non modifiables) — pour la symétrie : la moitié gauche.
+      const fixedMap = {}; (step.fixed || []).forEach((f) => (fixedMap[f.row + "," + f.col] = f.color));
+      // En mode « exact » (symétrie) : seules les colonnes ≥ lockCols sont modifiables.
+      const editable = (r, c) => !fixedMap[r + "," + c] && (step.lockCols == null || c >= step.lockCols);
       const boardEl = h("div", { class: "tt-board", style: { width: C * CELL + "px", height: R * CELL + "px" } });
       body.appendChild(boardEl);
       body.appendChild(h("div", { class: "muted center", style: { fontSize: "13px", margin: "6px 0" } }, "⬇️ Glisse une couleur sur une case. La gomme efface. Tu peux construire où tu veux."));
@@ -684,7 +688,7 @@ CV.Engine = (function () {
       function drop(e) {
         const r0 = boardEl.getBoundingClientRect();
         const r = Math.floor((e.clientY - r0.top) / CELL), c = Math.floor((e.clientX - r0.left) / CELL);
-        if (r >= 0 && r < R && c >= 0 && c < C) {
+        if (r >= 0 && r < R && c >= 0 && c < C && editable(r, c)) {   // on ne peint pas sur le modèle
           const k = r + "," + c;
           if (dragColor === ERASE) delete fill[k]; else fill[k] = dragColor;
         }
@@ -695,10 +699,13 @@ CV.Engine = (function () {
         boardEl.innerHTML = "";
         for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
           const k = r + "," + c;
-          const cell = h("div", { class: "tt-cell build-cell" + (fill[k] ? " filled" : "") });
+          const isModel = !!fixedMap[k], locked = !editable(r, c);
+          const cell = h("div", { class: "tt-cell build-cell" + (fill[k] || isModel ? " filled" : "") + (locked ? " locked" : "") });
           cell.style.left = c * CELL + "px"; cell.style.top = r * CELL + "px";
           cell.style.width = CELL + "px"; cell.style.height = CELL + "px";
-          if (fill[k]) cell.style.background = fill[k];
+          if (isModel) cell.style.background = fixedMap[k];
+          else if (fill[k]) cell.style.background = fill[k];
+          if (step.axisCol != null && c === step.axisCol) cell.classList.add("build-axis");   // trait du miroir
           boardEl.appendChild(cell);
         }
         trayEl.innerHTML = "";
@@ -713,17 +720,24 @@ CV.Engine = (function () {
       const validate = () => {
         if (body._validated) return;
         const keys = Object.keys(fill);
-        if (keys.length !== step.count) { CV.UI.toast("Il faut placer exactement " + step.count + " briques 🙂"); return; }
+        if (keys.length !== step.count) { CV.UI.toast("Il faut placer exactement " + step.count + " cases 🙂"); return; }
         body._validated = true;
-        // Normalise la figure du joueur (coin haut-gauche = 0,0) puis compare à la solution.
-        let minR = Infinity, minC = Infinity;
-        keys.forEach((k) => { const [r, c] = k.split(",").map(Number); minR = Math.min(minR, r); minC = Math.min(minC, c); });
-        const mine = {};
-        keys.forEach((k) => { const [r, c] = k.split(",").map(Number); mine[(r - minR) + "," + (c - minC)] = fill[k]; });
-        const sol = step.solution;
-        let good = Object.keys(sol).length === keys.length && Object.keys(sol).every((k) => mine[k] === sol[k]);
+        let good;
+        if (step.exact) {
+          // Symétrie : chaque case remplie doit être exactement la bonne (position + couleur).
+          const sol = step.solutionAbs;
+          good = Object.keys(sol).length === keys.length && keys.every((k) => fill[k] === sol[k]);
+        } else {
+          // Construction : figure comparée à la POSITION près (coin haut-gauche = 0,0).
+          let minR = Infinity, minC = Infinity;
+          keys.forEach((k) => { const [r, c] = k.split(",").map(Number); minR = Math.min(minR, r); minC = Math.min(minC, c); });
+          const mine = {};
+          keys.forEach((k) => { const [r, c] = k.split(",").map(Number); mine[(r - minR) + "," + (c - minC)] = fill[k]; });
+          const sol = step.solution;
+          good = Object.keys(sol).length === keys.length && Object.keys(sol).every((k) => mine[k] === sol[k]);
+        }
         boardEl.classList.add(good ? "tt-ok" : "tt-ko");
-        showFeedback(good, step.explain || (good ? "" : "Relis les consignes une par une."));
+        showFeedback(good, step.explain || (good ? "" : "Regarde bien de l'autre côté du miroir."));
       };
       body.appendChild(h("button", { class: "btn block mt", onclick: validate }, "Valider"));
     }

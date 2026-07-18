@@ -756,6 +756,8 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 /* Construction guidée : cases peintes + palette de couleurs persistante */
 .build-cell { border:1px solid #d8cff0; background:#faf8ff; border-radius:5px; }
 .build-cell.filled { border-color:rgba(0,0,0,.15); box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
+.build-cell.locked { background:#efeaff; }                 /* moitié modèle (non modifiable) */
+.build-cell.build-axis { box-shadow: inset 3px 0 0 var(--gold); }   /* trait du miroir */
 .build-swatch { border-radius:7px; border:1px solid rgba(0,0,0,.2); box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
 .build-swatch.erase { display:flex; align-items:center; justify-content:center; font-size:16px; box-shadow:none; }
 .build-pick { cursor:grab; touch-action:none; user-select:none; }
