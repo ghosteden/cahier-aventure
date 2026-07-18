@@ -43,7 +43,7 @@ CV.Store = (function () {
       currentDay: 1,
       heroNode: {},      // index du monde -> pierre où se tient le héros sur la carte (sauvegardé)
       fiches: {},        // fiches de connaissance débloquées : { ficheId: true }
-      settings: { minMin: 20, maxMin: 35, sound: true, cloud: true },
+      settings: { minMin: 20, maxMin: 35, sound: true, cloud: false },
       stats: { totalCorrect: 0, totalAnswered: 0, sessions: 0, modulesDone: 0 },
       createdAt: nowISO(),
       updatedAt: Date.now()
@@ -89,7 +89,7 @@ CV.Store = (function () {
       const id = normId(name, classCode);
       let s = readJSON(K_STATE(id), null);
       if (!s) s = defaultState(name, classCode);
-      if (!s.settings) s.settings = { minMin: 20, maxMin: 35, sound: true, cloud: true };
+      if (!s.settings) s.settings = { minMin: 20, maxMin: 35, sound: true, cloud: false };
       if (opts && typeof opts.cloud === "boolean") s.settings.cloud = opts.cloud;
       // si le joueur existe déjà mais qu'on a changé l'affichage du prénom
       if (name && name.trim()) s.displayName = name.trim();

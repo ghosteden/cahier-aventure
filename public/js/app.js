@@ -91,14 +91,8 @@ window.CV = window.CV || {};
     navEl.querySelectorAll(".nav-btn").forEach((b) =>
       b.addEventListener("click", () => goto(b.getAttribute("data-go"))));
 
-    // Statut de la sync (petit indicateur) + test de disponibilité du cloud
-    if (CV.Sync) {
-      CV.Sync.onStatus((ok) => {
-        CV._syncOk = ok;
-        if (typeof CV._onSyncStatus === "function") CV._onSyncStatus(ok);
-      });
-      CV.Sync.ping();
-    }
+    // Sauvegarde 100 % locale : pas de synchro cloud.
+    CV._syncOk = false;
 
     Store.autoLogin();
     setTimeout(() => {
@@ -156,46 +150,18 @@ window.CV = window.CV || {};
     // Pour l'instant une seule classe : CE2 (on en ajoutera d'autres plus tard).
     const classInput = h("select", { id: "login-class" }, h("option", { value: "CE2" }, "CE2 → CM1"));
 
-    // Choix de la sauvegarde (modifiable ensuite). Le Cloud n'est
-    // sélectionnable que si la synchro est réellement disponible (appli en ligne).
-    let cloudChoice = false;
-    let userTouched = false;
-    const optCloud = h("div", { class: "theme-opt world-espace disabled" }, "☁️ Cloud");
-    const optLocal = h("div", { class: "theme-opt world-pirates sel" }, "📱 Local");
-    const saveHint = h("p", { class: "muted", style: { fontSize: "13px", marginTop: "6px" } },
-      "Vérification de la sauvegarde en ligne…");
-    function selectCloud(on) {
-      cloudChoice = on;
-      optCloud.classList.toggle("sel", on);
-      optLocal.classList.toggle("sel", !on);
-      saveHint.textContent = on
-        ? "Cloud : la progression suit entre le téléphone et l'ordi."
-        : "Local : gardée seulement sur cet appareil (rien n'est envoyé en ligne).";
-    }
-    optCloud.addEventListener("click", () => { userTouched = true; selectCloud(true); });
-    optLocal.addEventListener("click", () => { userTouched = true; selectCloud(false); });
-    function refreshCloud() {
-      const ok = CV._syncOk === true;
-      optCloud.classList.toggle("disabled", !ok);
-      optCloud.textContent = ok ? "☁️ Cloud" : "☁️ Cloud (indispo.)";
-      if (!ok) selectCloud(false);
-      else if (!userTouched) selectCloud(true);
-    }
-    CV._onSyncStatus = () => { if (!Store.isLoggedIn()) refreshCloud(); };
-    refreshCloud();
-
+    // Sauvegarde 100 % locale (sur l'appareil) : rien n'est envoyé en ligne.
     const card = h("div", { class: "card" },
       h("div", { class: "lesson-icon" }, "🚀"),
       h("h2", { class: "center", style: { marginTop: "6px" } }, "L'Aventure des Savoirs"),
       h("p", { class: "center muted" }, "Cahier de vacances CE2 → CM1, en mode jeu !"),
       h("div", { class: "field" }, h("label", {}, "Comment tu t'appelles ?"), nameInput),
       h("div", { class: "field" }, h("label", {}, "Ta classe"), classInput),
-      h("div", { class: "field" }, h("label", {}, "Où sauvegarder ma progression ?"),
-        h("div", { class: "theme-pick" }, optCloud, optLocal), saveHint),
+      h("p", { class: "muted", style: { fontSize: "13px" } }, "💾 Ta progression est gardée sur cet appareil."),
       h("button", { class: "btn big block", onclick: () => {
         const name = nameInput.value.trim();
         if (!name) { UI.toast("Écris ton prénom pour commencer 🙂"); return; }
-        Store.login(name, classInput.value.trim(), { cloud: cloudChoice });
+        Store.login(name, classInput.value.trim(), { cloud: false });
         const s = Store.current();
         UI.applyTheme(s.theme);
         goto("#/carte");
@@ -2006,37 +1972,12 @@ window.CV = window.CV || {};
     const profBanner = installBanner();
     if (profBanner) c.appendChild(profBanner);
 
-    // Sauvegarde : choix Local / Cloud (Cloud désactivé si indisponible)
-    const cloudOn = !!(state.settings && state.settings.cloud);
-    const cloudAvailable = CV._syncOk === true;
-    const cloudDisabled = !cloudAvailable && !cloudOn;
-    const saveCard = h("div", { class: "card glass" }, h("strong", {}, "💾 Sauvegarde de la progression"));
-    const choice = h("div", { class: "theme-pick mt" },
-      h("div", { class: "theme-opt world-espace" + (cloudOn ? " sel" : "") + (cloudDisabled ? " disabled" : ""), onclick: () => {
-        if (cloudOn) return;
-        if (!cloudAvailable) { UI.toast("Le cloud sera dispo une fois l'appli en ligne ☁️"); return; }
-        Store.setCloud(true); UI.toast("Sauvegarde cloud activée ☁️"); renderProfil();
-      } }, cloudDisabled ? "☁️ Cloud (indispo.)" : "☁️ Cloud"),
-      h("div", { class: "theme-opt world-pirates" + (cloudOn ? "" : " sel"), onclick: () => {
-        if (!cloudOn) return;
-        if (confirm("Passer en sauvegarde locale ? Ta progression en ligne sera EFFACÉE (elle reste sur cet appareil).")) {
-          Store.setCloud(false); UI.toast("Sauvegarde locale — données cloud effacées 📱"); renderProfil();
-        }
-      } }, "📱 Local"));
-    saveCard.appendChild(choice);
-    saveCard.appendChild(h("p", { class: "muted", style: { fontSize: "13px", marginTop: "8px" } },
-      cloudOn
-        ? (cloudAvailable
-            ? "Cloud activé ✅ — synchro entre le téléphone et l'ordi. Identifiant : " + (state.classCode ? state.classCode + " · " : "") + state.displayName + "."
-            : "Cloud activé. Hors-ligne pour l'instant : la synchro se fera dès la reconnexion.")
-        : (cloudAvailable
-            ? "Mode local 📱. Tu peux activer le Cloud pour synchroniser tes appareils."
-            : "Mode local 📱 — la sauvegarde en ligne sera disponible une fois l'appli publiée.")));
-    if (cloudOn && cloudAvailable) saveCard.appendChild(h("button", { class: "btn ghost small mt", onclick: () => {
-      if (CV.Sync) { CV.Sync.push(state); UI.toast("Sauvegarde envoyée ☁️"); }
-    } }, "Forcer la sauvegarde maintenant"));
-    c.appendChild(saveCard);
-    CV._onSyncStatus = () => { if ((location.hash || "").indexOf("profil") >= 0) renderProfil(); };
+    // Sauvegarde 100 % locale (sur l'appareil).
+    c.appendChild(h("div", { class: "card glass" },
+      h("strong", {}, "💾 Sauvegarde de la progression"),
+      h("p", { class: "muted", style: { fontSize: "13px", marginTop: "8px" } },
+        "Ta progression est gardée sur cet appareil (dans ce navigateur). Rien n'est envoyé en ligne. "
+        + "Pense à jouer toujours sur le même appareil et à ne pas effacer les données du navigateur.")));
 
     // Réglages durée
     c.appendChild(h("div", { class: "card glass" },
