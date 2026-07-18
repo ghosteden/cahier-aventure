@@ -1458,9 +1458,11 @@ window.CV = window.CV || {};
     renderDayProgram(daySession.level);
   }
 
-  /* Étoiles de la journée : basées sur la réussite, moins 1 par étape passée. */
+  /* Étoiles de la journée : basées sur la réussite, moins 1 par étape passée.
+     La DICTÉE ne compte pas dans les étoiles (ni ses réponses, ni un éventuel skip). */
   function computeDayStars(ds) {
-    const skipped = ds.done.filter((d) => d && d.skipped).length;
+    const isDictee = (i) => ds.plan.steps[i] && ds.plan.steps[i].kind === "dictee";
+    const skipped = ds.done.filter((d, i) => d && d.skipped && !isDictee(i)).length;
     const base = ds.total > 0 ? Game.starsForScore(ds.correct, ds.total) : 0;
     return Math.max(0, base - skipped);
   }
@@ -1514,7 +1516,8 @@ window.CV = window.CV || {};
 
   function finishStep(i, s, mod, correct, total) {
     daySession.done[i] = { correct, total };
-    daySession.correct += correct; daySession.total += total;
+    // La dictée est un entraînement : elle n'entre pas dans le score qui donne les étoiles.
+    if (s.kind !== "dictee") { daySession.correct += correct; daySession.total += total; }
     const state = Store.current();
     if (mod) Game.awardModule(state, mod, correct, total);
     if (s.kind === "dictee") { state.flags = state.flags || {}; state.flags.dicteeDone = true; }
