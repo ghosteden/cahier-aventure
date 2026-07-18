@@ -525,11 +525,13 @@ CV.Engine = (function () {
       }
       // Un seul modèle de glisser (écouteurs au niveau window) : marche depuis le bac ET depuis
       // le plateau (on reprend une pièce déjà posée pour la redéplacer).
+      let dragPointerId = null;
       function onDragMove(e) { moveClone(e); }
       function onDragUp(e) {
         window.removeEventListener("pointermove", onDragMove);
         window.removeEventListener("pointerup", onDragUp);
         window.removeEventListener("pointercancel", onDragUp);
+        if (dragPointerId != null) { try { document.body.releasePointerCapture(dragPointerId); } catch (_) {} dragPointerId = null; }
         dropPiece(e);
       }
       function beginDrag(pid, e) {
@@ -541,6 +543,12 @@ CV.Engine = (function () {
         window.addEventListener("pointerup", onDragUp);
         window.addEventListener("pointercancel", onDragUp);
         e.preventDefault();
+      }
+      // Capture le geste sur le <body> (élément stable) : indispensable au tactile pour reprendre
+      // une pièce du plateau, car la case d'origine est retirée du DOM juste après.
+      function grabPointer(e) {
+        dragPointerId = e.pointerId;
+        try { document.body.setPointerCapture(e.pointerId); } catch (_) {}
       }
       function dropPiece(e) {
         const pid = dragPid; if (pid == null) return;
@@ -572,6 +580,7 @@ CV.Engine = (function () {
             cell.addEventListener("pointerdown", (e) => {
               if (body._validated) return;
               const pid = owner[k];
+              grabPointer(e);            // capture AVANT de reconstruire le plateau (sinon le geste tactile est perdu)
               removePiece(pid); render();
               beginDrag(pid, e);
             });
@@ -581,7 +590,7 @@ CV.Engine = (function () {
         trayEl.innerHTML = "";
         tray.forEach((pid) => {
           const el = miniPiece(pieceById(pid), 22);
-          el.addEventListener("pointerdown", (e) => beginDrag(pid, e));
+          el.addEventListener("pointerdown", (e) => { grabPointer(e); beginDrag(pid, e); });
           trayEl.appendChild(el);
         });
       }
