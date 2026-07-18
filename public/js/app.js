@@ -106,11 +106,57 @@ window.CV = window.CV || {};
 
   function goto(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 
+  /* ---- Partage par lien : la progression est encodée dans le # de l'URL (rien n'est envoyé
+     à un serveur). base64 URL-safe, compatible accents (UTF-8). ---- */
+  function encodeSave(obj) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function decodeSave(str) {
+    let s = str.replace(/-/g, "+").replace(/_/g, "/");
+    while (s.length % 4) s += "=";
+    return JSON.parse(decodeURIComponent(escape(atob(s))));
+  }
+  function shareLink(state) {
+    return location.origin + location.pathname + "#import=" + encodeSave(state);
+  }
+
+  /* Écran proposé quand on ouvre un lien de partage (#import=…). */
+  function renderImport(data) {
+    let s = null;
+    try { s = decodeSave(data); } catch (e) { s = null; }
+    navEl.setAttribute("hidden", "");
+    const c = screen();
+    if (!s || !s.player || !s.displayName) {
+      c.appendChild(h("div", { class: "card center" },
+        h("div", { style: { fontSize: "48px" } }, "😕"),
+        h("h2", {}, "Lien illisible"),
+        h("p", { class: "muted" }, "Ce lien de partage est abîmé ou incomplet."),
+        h("button", { class: "btn big block mt", onclick: () => { location.hash = "#/"; route(); } }, "Continuer")));
+      return;
+    }
+    const existing = Store.listPlayers().some((p) => p.player === s.player);
+    c.appendChild(h("div", { class: "card center" },
+      h("div", { style: { fontSize: "52px" } }, "📥"),
+      h("h2", {}, "Charger la progression de " + s.displayName + " ?"),
+      h("p", { class: "muted" }, "Niveau " + (s.currentDay || 1) + " · ⭐ " + (s.stars || 0)
+        + (existing ? " — ⚠️ cela remplacera la progression de « " + s.displayName + " » déjà sur cet appareil." : "")),
+      h("button", { class: "btn big gold block mt", onclick: () => {
+        const st = Store.importState(s);
+        location.hash = "#/carte";
+        if (st) { UI.applyTheme(st.theme); UI.toast("Progression de " + st.displayName + " chargée ! 🎉"); }
+        route();
+      } }, "✅ Charger cette progression"),
+      h("button", { class: "btn ghost block mt", onclick: () => { location.hash = "#/"; route(); } }, "Annuler")));
+  }
+
   function stopTimer() { if (timerInterval) { clearInterval(timerInterval); timerInterval = null; } }
 
   /* ---------- Routeur ---------- */
   function route() {
     stopTimer();
+    // Lien de partage : #import=<données> → écran de chargement.
+    const hraw = location.hash || "";
+    if (hraw.indexOf("#import=") === 0) return renderImport(hraw.slice("#import=".length));
     const state = Store.current();
     if (!state) { navEl.setAttribute("hidden", ""); return renderLogin(); }
     navEl.removeAttribute("hidden");
@@ -1983,6 +2029,23 @@ window.CV = window.CV || {};
     c.appendChild(h("div", { class: "card glass" },
       h("strong", {}, "⏱️ Durée d'une session conseillée"),
       h("p", { class: "muted" }, "Indicatif : l'appli encourage " + state.settings.minMin + " min minimum et propose une pause vers " + state.settings.maxMin + " min.")));
+
+    // Partage de la progression par lien (transfert entre appareils, sans cloud).
+    const linkTa = h("textarea", { readonly: "", style: { display: "none", width: "100%", height: "70px", marginTop: "8px", fontFamily: "monospace", fontSize: "11px", background: "#0c0a18", color: "#9effa0", borderRadius: "8px", border: "1px solid rgba(255,255,255,.2)", padding: "6px" } });
+    c.appendChild(h("div", { class: "card glass" },
+      h("strong", {}, "🔗 Partager ma progression"),
+      h("p", { class: "muted", style: { fontSize: "13px", marginTop: "6px" } },
+        "Crée un lien qui contient ton prénom et ta progression. Ouvre-le sur un autre appareil (ou envoie-le au maître/à la maîtresse) pour la recharger."),
+      h("button", { class: "btn small mt block", onclick: async () => {
+        const link = shareLink(Store.current());
+        linkTa.value = link; linkTa.style.display = "block";
+        let copied = false;
+        try { await navigator.clipboard.writeText(link); copied = true; } catch (e) {
+          try { linkTa.select(); document.execCommand("copy"); copied = true; } catch (_) {}
+        }
+        UI.toast(copied ? "🔗 Lien copié !" : "Sélectionne et copie le lien 👇");
+      } }, "🔗 Créer mon lien de partage"),
+      linkTa));
 
     // Outils test (visible seulement pour un joueur « test »)
     if ((state.displayName || "").toLowerCase().indexOf("test") >= 0) {

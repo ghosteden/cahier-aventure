@@ -179,6 +179,21 @@ CV.Store = (function () {
       }
     },
 
+    /* Importe une progression reçue par lien/fichier : elle remplace celle de ce prénom
+       sur cet appareil, et devient le joueur courant. Renvoie null si les données sont invalides. */
+    importState(s) {
+      if (!s || typeof s !== "object" || !s.player || !s.displayName) return null;
+      s.settings = s.settings || { minMin: 20, maxMin: 35, sound: true, cloud: false };
+      s.settings.cloud = false;                 // toujours local
+      s.updatedAt = Date.now();
+      writeJSON(K_STATE(s.player), s);
+      writeJSON(K_CURRENT, s.player);
+      state = s;
+      rememberPlayer(state);
+      emit();
+      return state;
+    },
+
     /* Réinitialise la progression du joueur courant (garde le compte). */
     resetProgress() {
       if (!state) return;

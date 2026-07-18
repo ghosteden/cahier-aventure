@@ -1,0 +1,37 @@
+import http from "http"; import fs from "fs"; import path from "path";
+import { chromium } from "playwright";
+const ROOT=path.resolve("public"), SHOTS=path.resolve("test/shots");
+const T={".html":"text/html",".css":"text/css",".js":"text/javascript",".svg":"image/svg+xml",".png":"image/png",".webmanifest":"application/manifest+json"};
+const srv=http.createServer((q,r)=>{let p=path.join(ROOT,decodeURIComponent(q.url.split("?")[0])); if(q.url==="/")p=path.join(ROOT,"index.html"); fs.readFile(p,(e,d)=>{if(e){r.writeHead(404);r.end();return;} r.writeHead(200,{"Content-Type":T[path.extname(p)]||"application/octet-stream"});r.end(d);});});
+await new Promise(r=>srv.listen(8255,r));
+const errors=[]; const b=await chromium.launch();
+const ctx=await b.newContext({viewport:{width:414,height:900}, permissions:["clipboard-read","clipboard-write"]});
+const page=await ctx.newPage();
+page.on("pageerror",e=>errors.push("PAGEERROR: "+e.message));
+await page.goto("http://localhost:8255/index.html",{waitUntil:"domcontentloaded"});
+await page.waitForSelector("#app:not([hidden])");
+await page.fill("#login-name","Léa"); await page.click('button:has-text("C\'est parti")');
+await page.waitForSelector(".map-viewport");
+// progresse un peu
+await page.evaluate(()=>{ const s=CV.Store.current(); s.currentDay=12; s.stars=17; s.fiches={"mod-fr-natures":true}; CV.Store.save(); });
+await page.click('.nav-btn[data-go="#/profil"]'); await page.waitForTimeout(200);
+await page.click('button:has-text("Créer mon lien")');
+await page.waitForTimeout(200);
+const link = await page.evaluate(()=>document.querySelector("#app textarea").value);
+console.log("Lien généré :", link.slice(0,60)+"... ("+link.length+" caractères)");
+// nouvel appareil (contexte vierge) : on ouvre le lien
+const page2 = await (await b.newContext({viewport:{width:414,height:900}})).newPage();
+page2.on("pageerror",e=>errors.push("P2: "+e.message));
+await page2.goto(link,{waitUntil:"domcontentloaded"});
+await page2.waitForSelector(".card");
+await page2.waitForTimeout(300);
+const importScreen = await page2.evaluate(()=>document.body.textContent.match(/Charger la progression de (\w+)/)?.[1]);
+console.log("Écran d'import détecté pour :", importScreen);
+await page2.screenshot({path:path.join(SHOTS,"share-import.png")});
+await page2.click('button:has-text("Charger cette progression")');
+await page2.waitForSelector(".map-viewport");
+const restored = await page2.evaluate(()=>{ const s=CV.Store.current(); return {nom:s.displayName, jour:s.currentDay, etoiles:s.stars, fiche:!!(s.fiches&&s.fiches["mod-fr-natures"])}; });
+console.log("Après import sur l'autre appareil :", restored);
+console.log(restored.nom==="Léa" && restored.jour===12 && restored.etoiles===17 && restored.fiche ? "✅ progression transférée à l'identique" : "❌");
+console.log("Erreurs JS :", errors.length, errors.slice(0,3));
+await b.close(); srv.close();
