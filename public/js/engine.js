@@ -160,6 +160,7 @@ CV.Engine = (function () {
         case "logic":      return renderLogic(step);
         case "place":      return renderPlace(step);
         case "tetris":     return renderTetris(step);
+        case "build":      return renderBuild(step);
         case "dictee":     return renderDictee(step);
         default:           return next(true);
       }
@@ -611,6 +612,98 @@ CV.Engine = (function () {
         }
         boardEl.classList.add(good ? "tt-ok" : "tt-ko");
         showFeedback(good, step.explain || (good ? "" : "Regarde bien la consigne."));
+      };
+      body.appendChild(h("button", { class: "btn block mt", onclick: validate }, "Valider"));
+    }
+
+    /* ---- Construction guidée : suivre des consignes spatiales pour bâtir une figure ----
+       Palette de couleurs PERSISTANTE (on ne la vide pas → pas de triche par élimination).
+       On peut construire n'importe où : la figure est validée à la POSITION près (peu importe
+       l'endroit sur la grille), en comparant l'agencement relatif des couleurs. */
+    function renderBuild(step) {
+      if (step._from) body.appendChild(h("div", { class: "pill" }, step._from));
+      body.appendChild(h("div", { class: "question" }, step.q || "Construis la figure."));
+      if (step.instruction) body.appendChild(h("div", { class: "logic-instr", html: "📋 " + step.instruction }));
+
+      const R = step.rows, C = step.cols, CELL = 38, ERASE = "__erase__";
+      const fill = {};                    // "r,c" -> couleur
+      const boardEl = h("div", { class: "tt-board", style: { width: C * CELL + "px", height: R * CELL + "px" } });
+      body.appendChild(boardEl);
+      body.appendChild(h("div", { class: "muted center", style: { fontSize: "13px", margin: "6px 0" } }, "⬇️ Glisse une couleur sur une case. La gomme efface. Tu peux construire où tu veux."));
+      const trayEl = h("div", { class: "place-tray tt-tray" });
+      body.appendChild(trayEl);
+
+      let dragColor = null, clone = null, dragPointerId = null;
+      function moveClone(e) { if (clone) { clone.style.left = (e.clientX - CELL / 2) + "px"; clone.style.top = (e.clientY - CELL / 2) + "px"; } }
+      function swatch(color, size) {
+        const el = h("div", { class: "build-swatch" });
+        el.style.width = size + "px"; el.style.height = size + "px";
+        el.style.background = color === ERASE ? "#fff" : color;
+        if (color === ERASE) { el.classList.add("erase"); el.textContent = "🧽"; }
+        return el;
+      }
+      function onMove(e) { moveClone(e); }
+      function onUp(e) {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        if (dragPointerId != null) { try { document.body.releasePointerCapture(dragPointerId); } catch (_) {} dragPointerId = null; }
+        drop(e);
+      }
+      function beginDrag(color, e) {
+        if (body._validated) return;
+        dragColor = color; dragPointerId = e.pointerId;
+        try { document.body.setPointerCapture(e.pointerId); } catch (_) {}
+        clone = swatch(color, CELL); clone.classList.add("tt-drag");
+        document.body.appendChild(clone); moveClone(e);
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+        e.preventDefault();
+      }
+      function drop(e) {
+        const r0 = boardEl.getBoundingClientRect();
+        const r = Math.floor((e.clientY - r0.top) / CELL), c = Math.floor((e.clientX - r0.left) / CELL);
+        if (r >= 0 && r < R && c >= 0 && c < C) {
+          const k = r + "," + c;
+          if (dragColor === ERASE) delete fill[k]; else fill[k] = dragColor;
+        }
+        if (clone) { clone.remove(); clone = null; }
+        dragColor = null; render();
+      }
+      function render() {
+        boardEl.innerHTML = "";
+        for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+          const k = r + "," + c;
+          const cell = h("div", { class: "tt-cell build-cell" + (fill[k] ? " filled" : "") });
+          cell.style.left = c * CELL + "px"; cell.style.top = r * CELL + "px";
+          cell.style.width = CELL + "px"; cell.style.height = CELL + "px";
+          if (fill[k]) cell.style.background = fill[k];
+          boardEl.appendChild(cell);
+        }
+        trayEl.innerHTML = "";
+        step.palette.concat([{ color: ERASE }]).forEach((p) => {
+          const el = swatch(p.color, 30); el.classList.add("build-pick");
+          el.addEventListener("pointerdown", (e) => beginDrag(p.color, e));
+          trayEl.appendChild(el);
+        });
+      }
+      render();
+
+      const validate = () => {
+        if (body._validated) return;
+        const keys = Object.keys(fill);
+        if (keys.length !== step.count) { CV.UI.toast("Il faut placer exactement " + step.count + " briques 🙂"); return; }
+        body._validated = true;
+        // Normalise la figure du joueur (coin haut-gauche = 0,0) puis compare à la solution.
+        let minR = Infinity, minC = Infinity;
+        keys.forEach((k) => { const [r, c] = k.split(",").map(Number); minR = Math.min(minR, r); minC = Math.min(minC, c); });
+        const mine = {};
+        keys.forEach((k) => { const [r, c] = k.split(",").map(Number); mine[(r - minR) + "," + (c - minC)] = fill[k]; });
+        const sol = step.solution;
+        let good = Object.keys(sol).length === keys.length && Object.keys(sol).every((k) => mine[k] === sol[k]);
+        boardEl.classList.add(good ? "tt-ok" : "tt-ko");
+        showFeedback(good, step.explain || (good ? "" : "Relis les consignes une par une."));
       };
       body.appendChild(h("button", { class: "btn block mt", onclick: validate }, "Valider"));
     }

@@ -520,8 +520,8 @@ window.CV = window.CV || {};
 
   /* Jeu 1 — « Construis le mur » : suivre une CONSIGNE pour poser chaque brique au bon endroit. */
   CV.gen.tetrisMur = function () {
-    const R = 4, C = 4;
-    const set = shuffleArr(TETROS.filter((t) => t.name !== "petit L").slice()).slice(0, 3);
+    const R = 5, C = 5;
+    const set = shuffleArr(TETROS.filter((t) => t.name !== "petit L").slice()).slice(0, 4);
     const grid = Array.from({ length: R }, () => Array(C).fill(false));
     const pieces = [], solution = {}, placedOrder = [];
     let pid = 0;
@@ -541,8 +541,8 @@ window.CV = window.CV || {};
     }
     const target = [];
     for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) if (grid[r][c]) target.push(r + "," + c);
-    const rowName = ["tout en HAUT", "sur la 2ᵉ ligne", "sur la 3ᵉ ligne", "tout en BAS"];
-    const colName = ["à GAUCHE", "sur la 2ᵉ colonne", "sur la 3ᵉ colonne", "à DROITE"];
+    const rowName = ["tout en HAUT", "sur la 2ᵉ ligne", "sur la 3ᵉ ligne", "sur la 4ᵉ ligne", "tout en BAS"];
+    const colName = ["à GAUCHE", "sur la 2ᵉ colonne", "sur la 3ᵉ colonne", "sur la 4ᵉ colonne", "à DROITE"];
     const consigne = pieces.map((p) => "• la pièce <b>" + p._name + " " + p._col + "</b> : son coin haut-gauche va " + rowName[p._pos[0]] + " et " + colName[p._pos[1]]).join("<br>");
     return {
       type: "tetris", mode: "exact", rows: R, cols: C, target,
@@ -556,9 +556,9 @@ window.CV = window.CV || {};
 
   /* Jeu 2 — « Remplis la forme » : agencer librement les pièces pour recouvrir toute la forme. */
   CV.gen.tetrisForme = function () {
-    const R = 4, C = 4;
+    const R = 5, C = 5;
     // on construit une forme en posant des pièces, puis on redonne ces pièces à agencer librement
-    const set = shuffleArr(TETROS.slice()).slice(0, 4);
+    const set = shuffleArr(TETROS.slice()).slice(0, 5);
     const grid = Array.from({ length: R }, () => Array(C).fill(false));
     const pieces = []; let pid = 0;
     for (const t of set) {
@@ -583,11 +583,53 @@ window.CV = window.CV || {};
     };
   };
 
-  /* Choisit un jeu de logique au hasard. */
+  /* Construction guidée : suivre des consignes spatiales (« la verte à droite de la rouge »)
+     pour bâtir une figure. Palette persistante + une couleur en trop (distracteur). */
+  CV.gen.construction = function () {
+    const PAL = [{ c: "#e63946", n: "rouge" }, { c: "#f4a52a", n: "jaune" }, { c: "#3a7bd5", n: "bleue" },
+      { c: "#2a9d8f", n: "verte" }, { c: "#8e44ad", n: "violette" }];
+    const n = Math.random() < 0.5 ? 4 : 5;              // 4 ou 5 briques
+    const cols = shuffleArr(PAL.slice()).slice(0, n);
+    const pos = {}, occ = {};
+    pos[cols[0].c] = [0, 0]; occ["0,0"] = true;
+    const steps = ["Pose une brique <b>" + cols[0].n + "</b>."];
+    const DIRS = [{ d: [0, 1], r: "à DROITE de" }, { d: [0, -1], r: "à GAUCHE de" },
+      { d: [-1, 0], r: "AU-DESSUS de" }, { d: [1, 0], r: "EN DESSOUS de" }];
+    for (let i = 1; i < n; i++) {
+      let placed = false, tries = 0;
+      while (!placed && tries < 80) {
+        tries++;
+        const ref = cols[Math.floor(Math.random() * i)];
+        const [rr, rc] = pos[ref.c];
+        const dir = pick(DIRS);
+        const nr = rr + dir.d[0], nc = rc + dir.d[1], k = nr + "," + nc;
+        if (occ[k]) continue;
+        pos[cols[i].c] = [nr, nc]; occ[k] = true;
+        steps.push("Mets une brique <b>" + cols[i].n + "</b> " + dir.r + " la <b>" + ref.n + "</b>.");
+        placed = true;
+      }
+    }
+    let minR = Infinity, minC = Infinity, maxR = -Infinity, maxC = -Infinity;
+    Object.values(pos).forEach(([r, c]) => { minR = Math.min(minR, r); minC = Math.min(minC, c); maxR = Math.max(maxR, r); maxC = Math.max(maxC, c); });
+    const solution = {};
+    cols.forEach((col) => { const [r, c] = pos[col.c]; solution[(r - minR) + "," + (c - minC)] = col.c; });
+    const rows = (maxR - minR + 1) + 2, gcols = (maxC - minC + 1) + 2;   // de la marge pour bâtir où on veut
+    return {
+      type: "build", q: "Construis la figure en suivant les consignes.",
+      instruction: steps.map((s, i) => (i + 1) + ". " + s).join("<br>"),
+      rows, cols: gcols, count: n,
+      palette: PAL.map((p) => ({ color: p.c, name: p.n })),   // TOUTES les couleurs (dont une en trop)
+      solution,
+      explain: "Il fallait suivre les consignes une par une, dans l'ordre."
+    };
+  };
+
+  /* Choisit un jeu de logique au hasard.
+     (Retirés car trop faciles pour ce niveau : logicSize « trier les briques » et deduction.) */
   CV.gen.logic = function () {
-    return pick([CV.gen.logicSize, CV.gen.logicNumber, CV.gen.logicAlpha, CV.gen.suiteMotifs,
-      CV.gen.doubleEntry, CV.gen.deduction, CV.gen.symetrie, CV.gen.reproduction,
-      CV.gen.tetrisMur, CV.gen.tetrisForme])();
+    return pick([CV.gen.logicNumber, CV.gen.logicAlpha, CV.gen.suiteMotifs,
+      CV.gen.doubleEntry, CV.gen.symetrie, CV.gen.reproduction,
+      CV.gen.construction, CV.gen.tetrisMur, CV.gen.tetrisForme])();
   };
 })();
 

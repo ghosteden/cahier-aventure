@@ -566,8 +566,11 @@ window.CV = window.CV || {};
         h("span", { class: "cb-wsub" }, mapViewIndex < curWorldIndex ? "✅" : (mapViewIndex + 1) + "/5")),
       h("button", { class: "world-arrow", disabled: mapViewIndex >= curWorldIndex ? "" : null,
         onclick: () => { if (mapViewIndex < curWorldIndex) { mapViewIndex++; renderCarte(); } } }, "›"),
-      h("button", { class: "world-arrow", style: placeMode ? { background: "var(--gold)", color: "#000" } : null,
-        title: "Placer les pierres", onclick: () => { placeMode = !placeMode; placePoints = []; editSeg = null; editPath = null; editNodes = null; selPoint = -1; mapCam = null; renderCarte(); } }, "📍"),
+      // Outil de placement des pierres/chemins : réservé à un joueur « test » (invisible pour les enfants).
+      ((state.displayName || "").toLowerCase().indexOf("test") >= 0)
+        ? h("button", { class: "world-arrow", style: placeMode ? { background: "var(--gold)", color: "#000" } : null,
+            title: "Placer les pierres", onclick: () => { placeMode = !placeMode; placePoints = []; editSeg = null; editPath = null; editNodes = null; selPoint = -1; mapCam = null; renderCarte(); } }, "📍")
+        : null,
       h("div", { class: "chip gold" }, "⭐" + (state.stars || 0)),
       h("div", { class: "chip fire" }, "🔥" + (state.streak.count || 0))));
     const banner = installBanner();
