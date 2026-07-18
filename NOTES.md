@@ -94,10 +94,23 @@ Planches déjà reconstruites : `cloud-venus-*`, `platform-lune-*`, `asteroid-4/
 - **La fusée** remplace le héros sur la carte de l'espace et **pivote sur 360°** pour suivre la courbe des orbites (angle calculé en pixels, pas en %, sinon la carte n'étant pas carrée l'angle serait faux).
 - **Ombres portées** : posées sur le jeton (`.hero-token`), **pas** sur la bande — sinon l'ombre est calculée sur toutes les images d'un coup et celle du voisin bave dans la case affichée.
 
+## Fait depuis (2e passe)
+
+- **Fiches de connaissance** ✅ (`public/data/fiches.js`) : chaque leçon réussie débloque une fiche
+  (résumé « à retenir » + exemple + astuce, tirés du module) ; chaque boss vaincu débloque une
+  fiche de monde. Collection dans l'écran Trophées, fiche en grand au clic. Débloquées via
+  `unlockFiches()` dans `finishDay`/`finishLevel` ; stockées dans `state.fiches`.
+- **3 jeux de logique** ✅ (`CV.gen.deduction/symetrie/reproduction`, dans generators.js) :
+  déduction (séquence + indices), symétrie (grille avec cases fixes + axe), repérage sur
+  quadrillage (coordonnées lettre/chiffre). Le moteur `place`/grid supporte désormais
+  `grid.fixed` (cases modèle non déplaçables) et `grid.rows/cols` sans en-têtes.
+- **Pluton** : pilotage refait en **« Flappy »** (tombe en permanence, monte tant qu'on appuie —
+  doigt ou espace/flèche haut) ; et le déblocage compte maintenant les planètes **passées**
+  (`planetsPlayed` inclut les skips) pour ne pas priver l'enfant de sa récompense.
+- **Neptune** : rafale de vent renforcée et **synchronisée** (le vent se lève avant le recul).
+- **Journée découverte : ABANDONNÉE** (la répartition des journées a été refaite, plus besoin).
+
 ## Reste à faire
 
-1. **Fiches de connaissance** : une par journée terminée + une par monde après le boss, avec un écran de collection.
-2. Les 3 derniers **jeux de logique** demandés : énigme de déduction, symétrie, reproduction sur repère.
-3. **Journée découverte** (1 par monde : sciences / géo / histoire) — nécessite un nouveau type de journée.
-4. Optionnel : `rover-death.png` n'est pas utilisé (idée : 3 erreurs = le rover se disloque et on recommence).
-5. Optionnel : `dragon-stand.png` (dragon dressé) inutilisé — pourrait servir de pose d'entrée du combat.
+1. (rien de bloquant) — tester en vrai Uranus/Neptune/Pluton et les fiches.
+2. Optionnel : `rover-death.png` et `dragon-stand.png` sont là mais inutilisés — **on ignore**.

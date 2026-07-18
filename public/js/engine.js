@@ -383,7 +383,7 @@ CV.Engine = (function () {
         const pid = dragPid;
         // Dépôt tolérant : la case la plus proche du doigt (sinon retour au bac).
         let best = null, bd = 1e9;
-        boardHost.querySelectorAll(".place-zone").forEach((z) => {
+        boardHost.querySelectorAll(".place-zone[data-zid]").forEach((z) => {   // que les vraies zones (pas les cases fixes/vides)
           const r = z.getBoundingClientRect();
           const d = Math.hypot(r.left + r.width / 2 - e.clientX, r.top + r.height / 2 - e.clientY);
           if (d < bd) { bd = d; best = z; }
@@ -413,16 +413,34 @@ CV.Engine = (function () {
       }
       function renderGrid() {
         const g = step.grid;
+        const fixedAt = (ri, ci) => (g.fixed || []).find((f) => f.row === ri && f.col === ci);
         const tbl = h("div", { class: "place-grid" });
-        const head = h("div", { class: "pg-row" }); head.appendChild(h("div", { class: "pg-corner" }));
-        g.colHeaders.forEach((c) => head.appendChild(h("div", { class: "pg-head" }, hdr(c))));
-        tbl.appendChild(head);
-        g.rowHeaders.forEach((rh, ri) => {
+        const head = h("div", { class: "pg-row" });
+        if (g.rowHeaders) head.appendChild(h("div", { class: "pg-corner" }));
+        (g.colHeaders || []).forEach((c) => head.appendChild(h("div", { class: "pg-head" }, hdr(c))));
+        if (g.colHeaders) tbl.appendChild(head);
+        const nRows = g.rowHeaders ? g.rowHeaders.length : g.rows;
+        for (let ri = 0; ri < nRows; ri++) {
           const row = h("div", { class: "pg-row" });
-          row.appendChild(h("div", { class: "pg-head" }, hdr(rh)));
-          g.colHeaders.forEach((ch, ci) => row.appendChild(zoneCell(step.zones.find((z) => z.row === ri && z.col === ci))));
+          if (g.rowHeaders) row.appendChild(h("div", { class: "pg-head" }, hdr(g.rowHeaders[ri])));
+          const nCols = g.colHeaders ? g.colHeaders.length : g.cols;
+          for (let ci = 0; ci < nCols; ci++) {
+            const zone = step.zones.find((z) => z.row === ri && z.col === ci);
+            const fx = fixedAt(ri, ci);
+            if (zone) {
+              const cell = zoneCell(zone);
+              if (g.axisCol != null && ci === g.axisCol) cell.classList.add("pg-axis");
+              row.appendChild(cell);
+            } else if (fx) {                              // case modèle, non déplaçable (symétrie)
+              const cell = h("div", { class: "place-zone fixed" }, hdr(fx));
+              if (g.axisCol != null && ci === g.axisCol) cell.classList.add("pg-axis");
+              row.appendChild(cell);
+            } else {
+              row.appendChild(h("div", { class: "place-zone empty" }));  // case vide décorative
+            }
+          }
           tbl.appendChild(row);
-        });
+        }
         return tbl;
       }
       function render() {

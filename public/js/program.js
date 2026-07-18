@@ -252,7 +252,8 @@ CV.BOSS_NODE = CV.LEVELS_PER_WORLD - 1;   // la 9e case d'un monde (Pluton pour 
    et Pluton attend que les 8 aient été JOUÉES — un niveau « passé » (skip) ne compte pas. */
 CV.freeWorldIndex = function () { return CV.WORLDS.findIndex((w) => w.freeOrder); };
 
-/* Nombre de planètes réellement jouées (les skips ne comptent pas). */
+/* Nombre de planètes visitées (jouées OU passées : on ne veut pas priver l'enfant de sa
+   récompense sur Pluton s'il a buté sur une planète et l'a passée). */
 CV.planetsPlayed = function (state) {
   const wi = CV.freeWorldIndex();
   if (wi < 0) return 0;
@@ -260,7 +261,7 @@ CV.planetsPlayed = function (state) {
   let n = 0;
   for (let i = 0; i < CV.BOSS_NODE; i++) {
     const d = dp[CV.levelNumber(wi, i)];
-    if (d && d.done && !d.skipped) n++;
+    if (d && d.done) n++;
   }
   return n;
 };

@@ -64,7 +64,8 @@ CV.UI = (function () {
       h("div", { class: "victory-emoji" }, opts.emoji || "🏆"),
       h("h2", {}, opts.title || "Bravo !"),
       opts.stars ? h("div", {}, stars(opts.stars)) : null,
-      opts.subtitle ? h("p", { class: "muted" }, opts.subtitle) : null
+      opts.subtitle ? h("p", { class: "muted" }, opts.subtitle) : null,
+      opts.extra ? h("p", { class: "victory-extra" }, opts.extra) : null
     );
     if (opts.badges && opts.badges.length) {
       box.appendChild(h("p", { class: "mt" }, "Nouveau" + (opts.badges.length > 1 ? "x" : "") + " trophée" + (opts.badges.length > 1 ? "x" : "") + " !"));

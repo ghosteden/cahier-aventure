@@ -424,6 +424,34 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 .node-sheet .ns-emoji { font-size:34px; }
 .sheet-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:34; animation: pop .2s; }
 
+/* ---- Fiches de connaissance ---- */
+.fiche-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(96px,1fr)); gap:10px; margin-top:8px; }
+.fiche-cell {
+  background:var(--card); border:1px solid rgba(255,255,255,.14); border-radius:14px;
+  padding:12px 6px; text-align:center; cursor:pointer; transition:transform .08s;
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+}
+.fiche-cell:active { transform:scale(.95); }
+.fiche-cell.locked { opacity:.5; cursor:default; }
+.fiche-cell.world { border-color:var(--gold); box-shadow:0 0 0 1px var(--gold) inset; }
+.fiche-ico { font-size:32px; line-height:1; }
+.fiche-ico.big { font-size:52px; }
+.fiche-t { font-size:11px; line-height:1.2; color:var(--text); font-weight:bold; }
+.fiche-sheet {
+  position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:35;
+  width:min(440px,92vw); max-height:86vh; overflow-y:auto;
+  background:var(--card-solid); color:var(--ink); border-radius:20px; padding:20px;
+  box-shadow:var(--shadow); animation: pop .2s;
+}
+.fiche-sheet-head { display:flex; align-items:center; gap:14px; margin-bottom:14px; }
+.fiche-kicker { font-size:12px; font-weight:bold; text-transform:uppercase; letter-spacing:.5px; color:var(--accent); }
+.fiche-body { line-height:1.55; font-size:15px; }
+.fiche-block { border-radius:12px; padding:12px 14px; margin-top:10px; line-height:1.5; font-size:15px; }
+.fiche-block.retenir { background:#f4f1ff; border-left:5px solid var(--accent); }
+.fiche-block.exemple { background:#fff7df; border-left:5px solid var(--gold); }
+.fiche-block.astuce  { background:#e8fff3; border-left:5px solid var(--good); }
+.victory-extra { background:rgba(255,210,63,.18); color:var(--gold); font-weight:bold; border-radius:12px; padding:8px 14px; margin-top:8px; }
+
 /* Bouton de test "Débloquer" */
 .btn.debug { background:#444; color:#fff; font-size:13px; opacity:.85; }
 
@@ -565,9 +593,26 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 .reward-stage { cursor: none; touch-action: none; }
 .reward-ship {
   position:absolute; left:18%; transform:translate(-50%,-50%); z-index:2;
-  transition: top .12s linear; pointer-events:none;
+  pointer-events:none;                 /* la position vient de la physique JS, pas d'une transition */
 }
+.reward-ship.thrust { filter: drop-shadow(0 0 6px rgba(120,200,255,.9)); }
 .reward-item { position:absolute; transform:translate(-50%,-50%); pointer-events:none; }
+
+/* Neptune : rafale de vent qui balaie l'écran vers la gauche quand on se trompe */
+.wind-fx { position:absolute; inset:0; pointer-events:none; z-index:3; overflow:hidden; }
+.wind-streak {
+  position:absolute; right:-40%; height:5px; width:55%;
+  border-radius:99px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.95), transparent);
+  filter: blur(.5px);
+  animation: windblow 1.1s ease-in forwards;
+}
+@keyframes windblow {
+  0%   { transform: translateX(0) scaleX(.5); opacity:0; }
+  15%  { opacity:1; }
+  85%  { opacity:1; }
+  100% { transform: translateX(-190%) scaleX(1.4); opacity:0; }
+}
 
 /* Objets posés dans la scène (nuages de Vénus, rochers, astéroïdes…) */
 .prop-token { position:relative; overflow:hidden; }   /* comme .hero-token : découpe une image dans la bande */
@@ -683,6 +728,12 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 }
 .place-zone.ok { border-color:var(--good); background:#eafff2; }
 .place-zone.ko { border-color:var(--bad); background:#ffeef2; }
+/* Symétrie / repère : case modèle (déjà remplie, non déplaçable) et case décorative vide */
+.place-zone.fixed { border:2px solid #cfc6e6; background:#f4f1ff; }
+.place-zone.empty { border:2px solid #eee6f7; background:#faf8ff; }
+.pg-swatch { pointer-events:none; }
+/* Axe du miroir : trait doré sur le bord gauche de la colonne de droite */
+.pg-axis { box-shadow: inset 3px 0 0 var(--gold); }
 .place-grid { display:inline-flex; flex-direction:column; gap:6px; margin:0 auto; }
 .place-grid { width:100%; }
 .pg-row { display:flex; gap:6px; justify-content:center; }

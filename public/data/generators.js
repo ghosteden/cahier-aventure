@@ -417,9 +417,97 @@ window.CV = window.CV || {};
       explain: "On croise la ligne (couleur) et la colonne (forme)." };
   };
 
+  /* Énigme de déduction : placer des personnages dans l'ordre à partir d'indices.
+     (lire + raisonner ; se repérer avec « à gauche / à droite / entre »). */
+  CV.gen.deduction = function () {
+    const CAST = [
+      { g: "🐱", n: "le chat" }, { g: "🐶", n: "le chien" }, { g: "🐰", n: "le lapin" },
+      { g: "🦊", n: "le renard" }, { g: "🐻", n: "l'ours" }, { g: "🐸", n: "la grenouille" }
+    ];
+    const cast = shuffleArr(CAST.slice()).slice(0, 3);
+    const order = shuffleArr(cast.slice());              // solution : ordre de gauche à droite
+    const posOf = (c) => order.indexOf(c);
+    const clues = [];
+    // indice 1 : qui est à une extrémité
+    if (Math.random() < 0.5) clues.push(order[0].n.charAt(0).toUpperCase() + order[0].n.slice(1) + " est tout à GAUCHE.");
+    else clues.push(order[2].n.charAt(0).toUpperCase() + order[2].n.slice(1) + " est tout à DROITE.");
+    // indice 2 : qui est au milieu (formulé « entre »)
+    clues.push(order[1].n.charAt(0).toUpperCase() + order[1].n.slice(1) + " est ENTRE les deux autres.");
+    // indice 3 : une relation gauche/droite entre deux voisins
+    const a = order[posOf(order[0])], b = order[1];
+    clues.push(a.n.charAt(0).toUpperCase() + a.n.slice(1) + " est à GAUCHE de " + b.n + ".");
+    const zones = order.map((_, i) => ({ id: "z" + i, zoneCol: i, expect: order[i].g }));
+    const sequence = order.map((_, i) => ({ zoneId: "z" + i }));
+    const pieces = shuffleArr(cast.map((c, i) => ({ id: "p" + i, key: c.g, glyph: c.g })));
+    return {
+      type: "place", layout: "sequence", q: "L'énigme des amis.",
+      instruction: "Range-les de GAUCHE à DROITE grâce aux indices :<br>• " + clues.join("<br>• "),
+      sequence, zones, pieces,
+      explain: "Le bon ordre : " + order.map((c) => c.g).join(" ") + "."
+    };
+  };
+
+  /* Symétrie : compléter la moitié droite pour qu'elle soit le miroir de la moitié gauche. */
+  CV.gen.symetrie = function () {
+    const COLORS = ["#e63946", "#3a7bd5", "#2a9d8f", "#e8871e", "#8e44ad"];
+    const rows = 4, half = 3, cols = half * 2;           // axe entre col 2 et 3
+    const model = [];                                     // cases pleines de la moitié gauche
+    for (let r = 0; r < rows; r++) for (let c = 0; c < half; c++) {
+      if (Math.random() < 0.5) model.push({ row: r, col: c, color: pick(COLORS) });
+    }
+    if (!model.length) model.push({ row: 1, col: 1, color: COLORS[0] });
+    const fixed = model.map((m) => ({ row: m.row, col: m.col, color: m.color, label: "" }));
+    // pour chaque case pleine à gauche → une case-miroir à droite à remplir
+    const zones = [], pieces = [];
+    model.forEach((m, i) => {
+      const mc = cols - 1 - m.col;                        // colonne miroir
+      zones.push({ id: "z" + i, row: m.row, col: mc, expect: m.color });
+      pieces.push({ id: "p" + i, key: m.color, color: m.color, label: "" });
+    });
+    return {
+      type: "place", layout: "grid", q: "La symétrie.",
+      instruction: "Complète la moitié DROITE pour qu'elle soit le reflet de la gauche dans le miroir.",
+      grid: { rows, cols, axisCol: half, fixed },
+      zones, pieces: shuffleArr(pieces),
+      explain: "Chaque case se reflète de l'autre côté de l'axe, comme dans un miroir."
+    };
+  };
+
+  /* Reproduction sur repère : placer des formes aux bonnes coordonnées (colonne + ligne). */
+  CV.gen.reproduction = function () {
+    const SHAPES = [{ g: "●", c: "#e63946" }, { g: "▲", c: "#3a7bd5" }, { g: "★", c: "#e8871e" }, { g: "■", c: "#2a9d8f" }];
+    const COLS = ["A", "B", "C", "D"], rows = 4, cols = 4;
+    const chosen = shuffleArr(SHAPES.slice()).slice(0, 3);
+    const used = {};
+    const zones = [], pieces = [], coords = [];
+    chosen.forEach((sh, i) => {
+      let r, c, keyPos;
+      do { r = Math.floor(Math.random() * rows); c = Math.floor(Math.random() * cols); keyPos = r + "-" + c; } while (used[keyPos]);
+      used[keyPos] = true;
+      const key = sh.g + i;
+      zones.push({ id: "z" + i, row: r, col: c, expect: key });
+      pieces.push({ id: "p" + i, key, glyph: sh.g, color: sh.c });
+      coords.push({ label: sh.g, col: COLS[c], line: rows - r });   // ligne 1 en bas, comme un repère
+    });
+    coords.sort((a, b) => a.col.localeCompare(b.col));
+    const list = coords.map((x) => "<b>" + x.label + "</b> en case <b>" + x.col + x.line + "</b>").join(", ");
+    return {
+      type: "place", layout: "grid", q: "Repère les cases.",
+      instruction: "Place chaque forme à ses coordonnées : " + list + ".<br>(la colonne, puis la ligne)",
+      grid: {
+        rows, cols,
+        colHeaders: COLS.map((l) => ({ label: l })),
+        rowHeaders: Array.from({ length: rows }, (_, i) => ({ label: String(rows - i) }))
+      },
+      zones, pieces: shuffleArr(pieces),
+      explain: "On lit d'abord la colonne (lettre), puis la ligne (chiffre)."
+    };
+  };
+
   /* Choisit un jeu de logique au hasard. */
   CV.gen.logic = function () {
-    return pick([CV.gen.logicSize, CV.gen.logicNumber, CV.gen.logicAlpha, CV.gen.suiteMotifs, CV.gen.doubleEntry])();
+    return pick([CV.gen.logicSize, CV.gen.logicNumber, CV.gen.logicAlpha, CV.gen.suiteMotifs,
+      CV.gen.doubleEntry, CV.gen.deduction, CV.gen.symetrie, CV.gen.reproduction])();
   };
 })();
 

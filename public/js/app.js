@@ -1101,7 +1101,7 @@ window.CV = window.CV || {};
     c.appendChild(h("p", { class: "center muted", style: { marginTop: "-4px", fontSize: "13px" } },
       "Glisse ton doigt (ou les flèches ↑ ↓) pour piloter."));
 
-    let shipY = 50, score = 0, running = true, last = 0, spawnAt = 0;
+    let shipY = 50, shipV = 0, score = 0, running = true, last = 0, spawnAt = 0;
     const items = [];                       // { el, x, y, speed, kind, spec, dead }
     const remaining = () => Math.max(0, Math.ceil(p.duration - elapsed / 1000));
     let elapsed = 0;
@@ -1109,19 +1109,18 @@ window.CV = window.CV || {};
     const place = () => { ship.style.top = shipY + "%"; };
     place();
 
-    // ---- Pilotage : doigt/souris sur la scène, ou flèches du clavier ----
-    const aim = (ev) => {
-      const r = stage.getBoundingClientRect();
-      shipY = clamp(((ev.clientY - r.top) / r.height) * 100, 8, 92);
-      place();
-    };
-    stage.addEventListener("pointerdown", aim);
-    stage.addEventListener("pointermove", (e) => { if (e.buttons || e.pointerType === "touch") aim(e); });
-    const onKey = (e) => {
-      if (e.key === "ArrowUp") { shipY = clamp(shipY - 7, 8, 92); place(); }
-      else if (e.key === "ArrowDown") { shipY = clamp(shipY + 7, 8, 92); place(); }
-    };
+    // ---- Pilotage « Flappy » : la fusée TOMBE en permanence ; tant qu'on reste appuyé, elle monte. ----
+    let thrusting = false;
+    const setThrust = (v) => { thrusting = v; ship.classList.toggle("thrust", v); };
+    const onDown = (e) => { setThrust(true); if (e.cancelable) e.preventDefault(); };
+    const onUp = () => setThrust(false);
+    stage.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointerup", onUp);
+    stage.addEventListener("pointerleave", onUp);
+    const onKey = (e) => { if (e.key === " " || e.key === "ArrowUp") { setThrust(true); e.preventDefault(); } };
+    const onKeyUp = (e) => { if (e.key === " " || e.key === "ArrowUp") setThrust(false); };
     window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
 
     function spawn() {
       const isRock = Math.random() < 0.45;
@@ -1164,6 +1163,17 @@ window.CV = window.CV || {};
       const dt = Math.min(50, t - last); last = t; elapsed += dt;
       if (elapsed >= p.duration * 1000) return end();
 
+      // Gravité constante vers le bas ; la poussée (appui maintenu) la fait remonter.
+      const s = dt / 1000;
+      shipV += (thrusting ? -190 : 105) * s;             // %/s² : chute lente, poussée plus forte
+      shipV = clamp(shipV, -60, 60);
+      shipY += shipV * s;
+      if (shipY < 6) { shipY = 6; shipV = 0; }
+      if (shipY > 94) { shipY = 94; shipV = 0; }
+      place();
+      // nez qui pointe vers le haut en montée, vers le bas en chute
+      rocket.style.transform = "rotate(" + clamp(shipV * 0.5, -22, 28) + "deg)";
+
       spawnAt -= dt;
       if (spawnAt <= 0) { spawn(); spawnAt = 480 + Math.random() * 420; }
 
@@ -1180,17 +1190,20 @@ window.CV = window.CV || {};
     }
     requestAnimationFrame(frame);
 
-    function end() {
-      running = false;
+    function unbind() {
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("pointerup", onUp);
+    }
+    function end() {
+      running = false; unbind();
       UI.confetti();
       UI.toast("Score : " + score + " ! 🚀");
       setTimeout(() => finishDay(lv, 3, score, score), 900);   // récompense : toujours 3 étoiles
     }
 
     // si on quitte l'écran, on coupe la boucle
-    const stop = () => { running = false; window.removeEventListener("keydown", onKey); };
-    window.addEventListener("hashchange", stop, { once: true });
+    window.addEventListener("hashchange", () => { running = false; unbind(); }, { once: true });
   }
 
   function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
@@ -1291,14 +1304,21 @@ window.CV = window.CV || {};
     if (reveal) showRemaining(); else { place(0, true); anim("idle"); }
     nextQ();
 
-    /* Neptune : le vent le repousse d'un cran en arrière. */
+    /* Neptune : une rafale de vent le repousse d'un cran en arrière (il reste tourné vers l'avant).
+       Chronologie synchronisée : le vent se lève D'ABORD, souffle pendant tout le recul, puis retombe. */
+    function gust() {
+      const g = h("div", { class: "wind-fx" });
+      for (let i = 0; i < 9; i++) g.appendChild(h("span", { class: "wind-streak", style: { top: (8 + i * 10) + "%", animationDelay: (i * 45) + "ms" } }));
+      stage.appendChild(g);
+      setTimeout(() => g.remove(), 1500);          // le vent dure plus longtemps que le déplacement
+    }
     function pushBack() {
-      if (at <= 0) { hop.classList.add("blocked"); setTimeout(() => hop.classList.remove("blocked"), 500); return; }
-      at--;
-      anim("sad", { once: true });
-      place(at);
-      setHeroFacing(tok, false);                 // APRÈS place() : sinon il remettrait le regard vers l'avant
-      setTimeout(() => { setHeroFacing(tok, true); anim("idle"); }, 800);
+      gust();
+      if (at <= 0) {                               // déjà au départ : il résiste mais n'avance pas
+        hop.classList.add("blocked"); setTimeout(() => hop.classList.remove("blocked"), 600); return;
+      }
+      // le vent est déjà en train de souffler ~280 ms avant qu'il ne cède du terrain
+      setTimeout(() => { at--; anim("sad", { once: true }); place(at); setTimeout(() => anim("idle"), 700); }, 280);
     }
 
     /* Parcours : il franchit un appui (saut, marche, surf, ou roulage pour le rover). */
@@ -1519,11 +1539,21 @@ window.CV = window.CV || {};
     mapViewIndex = wi;
   }
 
+  /* Débloque des fiches et renvoie celles qui sont NOUVELLES (pour l'annonce de fin). */
+  function unlockFiches(state, ids) {
+    state.fiches = state.fiches || {};
+    const fresh = [];
+    (ids || []).forEach((id) => { if (!state.fiches[id]) { state.fiches[id] = true; fresh.push(id); } });
+    return fresh;
+  }
+
   function finishDay(lv, stars, correct, total, skipped) {
     const state = Store.current();
     const plutonWasLocked = !CV.plutonUnlocked(state);
     const r = Game.completeDay(state, lv, stars, skipped);
     saveHeroSpot(state, lv);
+    // Une journée réussie (au moins 1 étoile) débloque les fiches de ses leçons.
+    const newFiches = stars > 0 && CV.fichesForLevel ? unlockFiches(state, CV.fichesForLevel(lv.level)) : [];
     // Les 8 planètes viennent d'être bouclées → on annonce Pluton en arrivant sur la carte.
     if (plutonWasLocked && CV.plutonUnlocked(state)) plutonAnnounce = true;
     Store.save();
@@ -1537,6 +1567,7 @@ window.CV = window.CV || {};
       subtitle: low ? "Pas d'étoile cette fois — rejoue-le pour les gagner ! 💪"
         : (correct != null ? (correct + " / " + total + " bonnes réponses sur la journée") : "Bravo, champion !"),
       badges: r.newBadges || [],
+      extra: newFiches.length ? ("📇 " + newFiches.length + " nouvelle" + (newFiches.length > 1 ? "s" : "") + " fiche" + (newFiches.length > 1 ? "s" : "") + " de connaissance !") : null,
       cta: "Retour à la carte 🗺️",
       onContinue: () => goto("#/carte")
     });
@@ -1691,6 +1722,11 @@ window.CV = window.CV || {};
     const state = Store.current();
     Game.completeDay(state, lv, stars, isSkip);
     saveHeroSpot(state, lv);
+    // Boss vaincu (au moins 1 étoile) → fiche du monde.
+    if (lv.isBoss && stars > 0 && CV.WORLD_FICHES) {
+      const wf = CV.WORLD_FICHES[CV.worldIndexOfLevel(lv.level)];
+      if (wf) unlockFiches(state, [wf.id]);
+    }
     Store.save();
     if (lv.isBoss) return worldCleared(lv, stars, correct, total);
     goto("#/carte");
@@ -1741,6 +1777,25 @@ window.CV = window.CV || {};
     });
     c.appendChild(grid);
 
+    // ---- Fiches de connaissance ----
+    const all = CV.allFiches ? CV.allFiches() : [];
+    if (all.length) {
+      const owned = state.fiches || {};
+      const nOwned = all.filter((f) => owned[f.id]).length;
+      c.appendChild(h("h3", { style: { margin: "18px 0 6px" } }, "📇 Fiches de connaissance"));
+      c.appendChild(h("p", { class: "muted", style: { marginTop: "-4px" } }, nOwned + " / " + all.length + " découvertes — réussis une leçon pour gagner sa fiche."));
+      const fg = h("div", { class: "fiche-grid" });
+      all.forEach((f) => {
+        const has = !!owned[f.id];
+        const cell = h("div", { class: "fiche-cell" + (has ? "" : " locked") + (f.kind === "world" ? " world" : "") },
+          h("div", { class: "fiche-ico" }, has ? (f.icon || f.emoji) : "🔒"),
+          h("div", { class: "fiche-t" }, has ? f.title : "À découvrir"));
+        if (has) cell.addEventListener("click", () => openFiche(f.id));
+        fg.appendChild(cell);
+      });
+      c.appendChild(fg);
+    }
+
     const st = state.stats || {};
     const pct = st.totalAnswered ? Math.round((st.totalCorrect / st.totalAnswered) * 100) : 0;
     c.appendChild(h("div", { class: "card glass mt" },
@@ -1751,6 +1806,30 @@ window.CV = window.CV || {};
       statLine("Étoiles gagnées", "⭐ " + (state.stars || 0)),
       statLine("Meilleure série", "🔥 " + (state.streak.count || 0) + " jours")
     ));
+  }
+
+  /* Ouvre une fiche en grand (fenêtre modale). */
+  function openFiche(id) {
+    const f = CV.ficheById(id);
+    if (!f) return;
+    const backdrop = h("div", { class: "sheet-backdrop", onclick: (e) => { if (e.target === backdrop) backdrop.remove(); } });
+    const SUBJ = { francais: "Français", maths: "Maths", sciences: "Sciences", culture: "Culture" };
+    const card = h("div", { class: "fiche-sheet" },
+      h("div", { class: "fiche-sheet-head" },
+        h("div", { class: "fiche-ico big" }, f.icon || f.emoji),
+        h("div", {},
+          h("div", { class: "fiche-kicker" }, f.kind === "world" ? "Fiche du monde" : (SUBJ[f.subject] || "Leçon")),
+          h("h3", { style: { margin: "2px 0 0" } }, f.title))),
+      f.kind === "world"
+        ? h("p", { class: "fiche-body" }, f.text)
+        : h("div", {},
+            h("div", { class: "fiche-block retenir" }, h("strong", {}, "À retenir : "), f.retenir),
+            f.exemple ? h("div", { class: "fiche-block exemple" }, h("strong", {}, "Exemple : "), f.exemple) : null,
+            f.astuce ? h("div", { class: "fiche-block astuce" }, h("strong", {}, "💡 Astuce : "), f.astuce) : null),
+      h("button", { class: "btn block mt", onclick: () => backdrop.remove() }, "Fermer")
+    );
+    backdrop.appendChild(card);
+    appEl.appendChild(backdrop);
   }
 
   function statLine(label, val) {
