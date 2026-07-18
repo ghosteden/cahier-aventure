@@ -759,6 +759,25 @@ h2.section-title { font-size: 22px; margin: 6px 0 14px; }
 .build-swatch { border-radius:7px; border:1px solid rgba(0,0,0,.2); box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
 .build-swatch.erase { display:flex; align-items:center; justify-content:center; font-size:16px; box-shadow:none; }
 .build-pick { cursor:grab; touch-action:none; user-select:none; }
+/* Rangement par déduction : cases en ligne + bac d'animaux persistant */
+.order-row { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin:12px 0; touch-action:none; }
+.order-row.tt-ok .order-slot { border-color:var(--good); background:#eafff2; }
+.order-row.tt-ko .order-slot { border-color:var(--bad); background:#ffeef2; }
+.order-slot { border:2px dashed #b9add9; border-radius:12px; background:#fff; display:flex; align-items:center; justify-content:center; touch-action:none; }
+.order-chip { display:flex; align-items:center; justify-content:center; line-height:1; }
+.order-tray { min-height:60px; align-items:center; touch-action:none; }
+.order-pick { cursor:grab; touch-action:none; user-select:none; background:#fff; border-radius:12px; box-shadow:0 3px 0 rgba(0,0,0,.12); }
+/* Repérage sur quadrillage : toutes les cases identiques (pas d'indice visuel) */
+.coord-grid { display:inline-flex; flex-direction:column; gap:4px; margin:10px auto; touch-action:none; }
+.coord-grid.tt-ok .coord-cell { border-color:var(--good); }
+.coord-grid.tt-ko .coord-cell { border-color:var(--bad); }
+.coord-row { display:flex; gap:4px; justify-content:center; }
+.coord-corner { width:28px; }
+.coord-head { width:28px; min-height:28px; display:flex; align-items:center; justify-content:center; font-weight:bold; color:var(--ink); }
+.coord-cell { border:2px solid #cfc6e6; border-radius:8px; background:#fbfaff; display:flex; align-items:center; justify-content:center; touch-action:none; }
+.coord-shape { line-height:1; display:flex; align-items:center; justify-content:center; }
+.coord-tray { min-height:56px; align-items:center; touch-action:none; }
+.coord-pick { cursor:grab; touch-action:none; user-select:none; background:#fff; border-radius:10px; box-shadow:0 3px 0 rgba(0,0,0,.12); padding:2px; }
 /* Axe du miroir : trait doré sur le bord gauche de la colonne de droite */
 .pg-axis { box-shadow: inset 3px 0 0 var(--gold); }
 .place-grid { display:inline-flex; flex-direction:column; gap:6px; margin:0 auto; }

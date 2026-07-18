@@ -161,6 +161,8 @@ CV.Engine = (function () {
         case "place":      return renderPlace(step);
         case "tetris":     return renderTetris(step);
         case "build":      return renderBuild(step);
+        case "coord":      return renderCoord(step);
+        case "order":      return renderOrder(step);
         case "dictee":     return renderDictee(step);
         default:           return next(true);
       }
@@ -343,61 +345,75 @@ CV.Engine = (function () {
       body.appendChild(h("div", { class: "question" }, step.q || "Place au bon endroit."));
       if (step.instruction) body.appendChild(h("div", { class: "logic-instr", html: "📋 " + step.instruction }));
 
-      const pieceById = (id) => step.pieces.find((p) => p.id === id);
-      const placed = {}; step.zones.forEach((z) => (placed[z.id] = null));
-      let tray = step.pieces.map((p) => p.id);
+      // Bac PERSISTANT : on ne place plus des jetons uniques mais des CLÉS (couleur/glyphe) que
+      // l'on peut poser autant de fois qu'on veut. Le bac ne se vide jamais → pas de triche par
+      // élimination. On peut aussi reprendre une pièce posée pour la redéplacer.
+      const pieceByKey = (k) => step.pieces.find((p) => String(p.key) === String(k));
+      const trayKeys = [];                       // clés distinctes, dans l'ordre
+      step.pieces.forEach((p) => { if (trayKeys.indexOf(String(p.key)) < 0) trayKeys.push(String(p.key)); });
+      const placed = {}; step.zones.forEach((z) => (placed[z.id] = null));   // zid -> clé
 
       const boardHost = h("div");
       const trayEl = h("div", { class: "place-tray" });
       body.appendChild(boardHost);
-      body.appendChild(h("div", { class: "muted center", style: { fontSize: "13px", margin: "6px 0" } }, "⬇️ Fais glisser les étiquettes dans les bonnes cases."));
+      body.appendChild(h("div", { class: "muted center", style: { fontSize: "13px", margin: "6px 0" } }, "⬇️ Fais glisser les étiquettes dans les cases. Tu peux les redéplacer."));
       body.appendChild(trayEl);
 
-      let dragPid = null, clone = null;
+      let dragKey = null, dragFromZid = null, clone = null, dragPointerId = null;
       function glyphSpan(g, color, size) { const s = h("span", {}, g); s.style.fontSize = (size || 24) + "px"; if (color) s.style.color = color; return s; }
-      function makePiece(pid) {
-        const p = pieceById(pid);
-        const el = h("div", { class: "place-piece", "data-pid": pid });
+      function pieceEl(key) {
+        const p = pieceByKey(key);
+        const el = h("div", { class: "place-piece" });
         if (p.glyph) el.appendChild(glyphSpan(p.glyph, p.color, 26));
         else { if (p.color) { el.classList.add("brick"); el.style.background = p.color; } el.appendChild(h("span", {}, p.label || "")); }
-        attachDrag(el, pid);
         return el;
       }
       function moveClone(e) { if (!clone) return; clone.style.left = (e.clientX - clone.offsetWidth / 2) + "px"; clone.style.top = (e.clientY - clone.offsetHeight / 2) + "px"; }
-      function cleanup() { if (clone) { clone.remove(); clone = null; } dragPid = null; }
-      function detach(pid) { tray = tray.filter((x) => x !== pid); for (const z in placed) if (placed[z] === pid) placed[z] = null; }
-      function attachDrag(el, pid) {
-        el.addEventListener("pointerdown", (e) => {
-          if (body._validated) return;
-          dragPid = pid;
-          const r = el.getBoundingClientRect();
-          clone = el.cloneNode(true); clone.classList.add("place-drag");
-          clone.style.width = r.width + "px"; clone.style.height = r.height + "px";
-          document.body.appendChild(clone); el.style.opacity = ".25"; moveClone(e);
-          try { el.setPointerCapture(e.pointerId); } catch (_) {}
-          e.preventDefault();
-        });
-        el.addEventListener("pointermove", (e) => { if (dragPid === pid) moveClone(e); });
-        el.addEventListener("pointerup", (e) => { if (dragPid === pid) drop(e); });
-        el.addEventListener("pointercancel", () => { cleanup(); render(); });
+      function onMove(e) { moveClone(e); }
+      function onUp(e) {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        if (dragPointerId != null) { try { document.body.releasePointerCapture(dragPointerId); } catch (_) {} dragPointerId = null; }
+        drop(e);
+      }
+      function beginDrag(key, fromZid, el, e) {
+        if (body._validated) return;
+        dragKey = key; dragFromZid = fromZid; dragPointerId = e.pointerId;
+        try { document.body.setPointerCapture(e.pointerId); } catch (_) {}
+        const r = el.getBoundingClientRect();
+        clone = pieceEl(key); clone.classList.add("place-drag");
+        clone.style.width = r.width + "px"; clone.style.height = r.height + "px";
+        document.body.appendChild(clone); moveClone(e);
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+        e.preventDefault();
       }
       function drop(e) {
-        const pid = dragPid;
-        // Dépôt tolérant : la case la plus proche du doigt (sinon retour au bac).
         let best = null, bd = 1e9;
         boardHost.querySelectorAll(".place-zone[data-zid]").forEach((z) => {   // que les vraies zones (pas les cases fixes/vides)
           const r = z.getBoundingClientRect();
           const d = Math.hypot(r.left + r.width / 2 - e.clientX, r.top + r.height / 2 - e.clientY);
           if (d < bd) { bd = d; best = z; }
         });
-        if (best && bd < 150) { const zid = best.getAttribute("data-zid"); detach(pid); if (placed[zid]) tray.push(placed[zid]); placed[zid] = pid; }
-        else { detach(pid); if (tray.indexOf(pid) < 0) tray.push(pid); }
-        cleanup(); render();
+        if (best && bd < 150) {
+          const zid = best.getAttribute("data-zid");
+          if (dragFromZid && dragFromZid !== zid) placed[dragFromZid] = null;   // déplacée depuis une autre case
+          placed[zid] = dragKey;
+        } else if (dragFromZid) {
+          placed[dragFromZid] = null;                                           // lâchée hors des cases → retirée
+        }
+        if (clone) { clone.remove(); clone = null; }
+        dragKey = dragFromZid = null; render();
       }
       function zoneCell(z) {
         const el = h("div", { class: "place-zone", "data-zid": z.id });
-        if (placed[z.id]) el.appendChild(makePiece(placed[z.id]));
-        else if (z.label) el.appendChild(h("span", { class: "muted" }, z.label));
+        if (placed[z.id]) {
+          const pe = pieceEl(placed[z.id]);
+          pe.addEventListener("pointerdown", (e) => { if (!body._validated) beginDrag(placed[z.id], z.id, pe, e); });
+          el.appendChild(pe);
+        } else if (z.label) el.appendChild(h("span", { class: "muted" }, z.label));
         return el;
       }
       function hdr(c) {
@@ -449,7 +465,11 @@ CV.Engine = (function () {
         boardHost.innerHTML = "";
         boardHost.appendChild(step.layout === "grid" ? renderGrid() : renderSequence());
         trayEl.innerHTML = "";
-        tray.forEach((pid) => trayEl.appendChild(makePiece(pid)));
+        trayKeys.forEach((key) => {
+          const el = pieceEl(key);
+          el.addEventListener("pointerdown", (e) => { if (!body._validated) beginDrag(key, null, el, e); });
+          trayEl.appendChild(el);
+        });
       }
       render();
 
@@ -459,7 +479,7 @@ CV.Engine = (function () {
         body._validated = true;
         let good = true;
         step.zones.forEach((z) => {
-          const ok = String(pieceById(placed[z.id]).key) === String(z.expect);
+          const ok = String(placed[z.id]) === String(z.expect);
           if (!ok) good = false;
           const el = boardHost.querySelector('.place-zone[data-zid="' + z.id + '"]');
           if (el) el.classList.add(ok ? "ok" : "ko");
@@ -704,6 +724,202 @@ CV.Engine = (function () {
         let good = Object.keys(sol).length === keys.length && Object.keys(sol).every((k) => mine[k] === sol[k]);
         boardEl.classList.add(good ? "tt-ok" : "tt-ko");
         showFeedback(good, step.explain || (good ? "" : "Relis les consignes une par une."));
+      };
+      body.appendChild(h("button", { class: "btn block mt", onclick: validate }, "Valider"));
+    }
+
+    /* ---- Repérage sur quadrillage : placer des formes aux bonnes coordonnées.
+       TOUTES les cases sont identiques et acceptent une forme (donc on peut se tromper).
+       Palette persistante + repositionnable. ---- */
+    function renderCoord(step) {
+      if (step._from) body.appendChild(h("div", { class: "pill" }, step._from));
+      body.appendChild(h("div", { class: "question" }, step.q || "Place aux bonnes cases."));
+      if (step.instruction) body.appendChild(h("div", { class: "logic-instr", html: "📋 " + step.instruction }));
+
+      const R = step.rows, C = step.cols, CELL = 46;
+      const fill = {};                          // "r,c" -> clé de forme
+      const palByKey = (k) => step.palette.find((p) => p.key === k);
+      const gridEl = h("div", { class: "coord-grid" });
+      body.appendChild(gridEl);
+      body.appendChild(h("div", { class: "muted center", style: { fontSize: "13px", margin: "6px 0" } }, "⬇️ Glisse une forme à la bonne case. Tu peux la redéplacer (ou la sortir pour l'enlever)."));
+      const trayEl = h("div", { class: "place-tray coord-tray" });
+      body.appendChild(trayEl);
+
+      let dragKey = null, dragFrom = null, clone = null, dragPointerId = null;
+      function shapeEl(key, size) {
+        const p = palByKey(key);
+        const el = h("div", { class: "coord-shape" }, p.glyph);
+        el.style.fontSize = Math.round(size * 0.62) + "px"; el.style.color = p.color;
+        return el;
+      }
+      function moveClone(e) { if (clone) { clone.style.left = (e.clientX - CELL / 2) + "px"; clone.style.top = (e.clientY - CELL / 2) + "px"; } }
+      function onMove(e) { moveClone(e); }
+      function onUp(e) {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        if (dragPointerId != null) { try { document.body.releasePointerCapture(dragPointerId); } catch (_) {} dragPointerId = null; }
+        drop(e);
+      }
+      function beginDrag(key, from, e) {
+        if (body._validated) return;
+        dragKey = key; dragFrom = from; dragPointerId = e.pointerId;
+        try { document.body.setPointerCapture(e.pointerId); } catch (_) {}
+        clone = shapeEl(key, CELL); clone.classList.add("tt-drag");
+        clone.style.width = CELL + "px"; clone.style.height = CELL + "px";
+        document.body.appendChild(clone); moveClone(e);
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+        e.preventDefault();
+      }
+      function drop(e) {
+        // case la plus proche du doigt
+        let best = null, bd = 1e9;
+        gridEl.querySelectorAll(".coord-cell[data-k]").forEach((cel) => {
+          const r = cel.getBoundingClientRect();
+          const d = Math.hypot(r.left + r.width / 2 - e.clientX, r.top + r.height / 2 - e.clientY);
+          if (d < bd) { bd = d; best = cel; }
+        });
+        if (best && bd < 90) {
+          const k = best.getAttribute("data-k");
+          if (dragFrom && dragFrom !== k) delete fill[dragFrom];
+          fill[k] = dragKey;
+        } else if (dragFrom) {
+          delete fill[dragFrom];                 // sortie de la grille → enlevée
+        }
+        if (clone) { clone.remove(); clone = null; }
+        dragKey = dragFrom = null; render();
+      }
+      function render() {
+        gridEl.innerHTML = "";
+        // ligne d'en-tête (coin + lettres de colonnes)
+        const head = h("div", { class: "coord-row" });
+        head.appendChild(h("div", { class: "coord-corner" }));
+        step.colHeaders.forEach((l) => head.appendChild(h("div", { class: "coord-head" }, l)));
+        gridEl.appendChild(head);
+        for (let r = 0; r < R; r++) {
+          const row = h("div", { class: "coord-row" });
+          row.appendChild(h("div", { class: "coord-head" }, step.rowHeaders[r]));
+          for (let c = 0; c < C; c++) {
+            const k = r + "," + c;
+            const cell = h("div", { class: "coord-cell", "data-k": k });
+            cell.style.width = CELL + "px"; cell.style.height = CELL + "px";
+            if (fill[k]) {
+              cell.appendChild(shapeEl(fill[k], CELL - 8));
+              cell.addEventListener("pointerdown", (e) => { if (!body._validated) beginDrag(fill[k], k, e); });
+            }
+            row.appendChild(cell);
+          }
+          gridEl.appendChild(row);
+        }
+        trayEl.innerHTML = "";
+        step.palette.forEach((p) => {
+          const el = shapeEl(p.key, 40); el.classList.add("coord-pick");
+          el.addEventListener("pointerdown", (e) => beginDrag(p.key, null, e));
+          trayEl.appendChild(el);
+        });
+      }
+      render();
+
+      const validate = () => {
+        if (body._validated) return;
+        const keys = Object.keys(fill);
+        if (keys.length !== step.count) { CV.UI.toast("Place les " + step.count + " formes 🙂"); return; }
+        body._validated = true;
+        const sol = step.solution;
+        const good = Object.keys(sol).length === keys.length && keys.every((k) => fill[k] === sol[k]);
+        gridEl.classList.add(good ? "tt-ok" : "tt-ko");
+        showFeedback(good, step.explain || (good ? "" : "Regarde bien la colonne (lettre) puis la ligne (chiffre)."));
+      };
+      body.appendChild(h("button", { class: "btn block mt", onclick: validate }, "Valider"));
+    }
+
+    /* ---- Rangement par déduction : placer des animaux dans le bon ordre grâce à des indices.
+       Bac PERSISTANT (8 animaux, ne se vide pas → pas de triche par élimination). ---- */
+    function renderOrder(step) {
+      if (step._from) body.appendChild(h("div", { class: "pill" }, step._from));
+      body.appendChild(h("div", { class: "question" }, step.q || "Range dans le bon ordre."));
+      if (step.instruction) body.appendChild(h("div", { class: "logic-instr", html: "📋 " + step.instruction }));
+
+      const N = step.count, SLOT = 56;
+      const slots = new Array(N).fill(null);      // glyph par position
+      const rowEl = h("div", { class: "order-row" });
+      body.appendChild(rowEl);
+      body.appendChild(h("div", { class: "muted center", style: { fontSize: "13px", margin: "6px 0" } }, "⬇️ Glisse un animal dans une case (gauche → droite). Tu peux le remplacer."));
+      const trayEl = h("div", { class: "place-tray order-tray" });
+      body.appendChild(trayEl);
+
+      let dragGlyph = null, clone = null, dragPointerId = null;
+      function moveClone(e) { if (clone) { clone.style.left = (e.clientX - SLOT / 2) + "px"; clone.style.top = (e.clientY - SLOT / 2) + "px"; } }
+      function chip(glyph, size) {
+        const el = h("div", { class: "order-chip" }, glyph);
+        el.style.width = size + "px"; el.style.height = size + "px"; el.style.fontSize = Math.round(size * 0.6) + "px";
+        return el;
+      }
+      function onMove(e) { moveClone(e); }
+      function onUp(e) {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        if (dragPointerId != null) { try { document.body.releasePointerCapture(dragPointerId); } catch (_) {} dragPointerId = null; }
+        drop(e);
+      }
+      function beginDrag(glyph, e) {
+        if (body._validated) return;
+        dragGlyph = glyph; dragPointerId = e.pointerId;
+        try { document.body.setPointerCapture(e.pointerId); } catch (_) {}
+        clone = chip(glyph, SLOT); clone.classList.add("tt-drag");
+        document.body.appendChild(clone); moveClone(e);
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+        e.preventDefault();
+      }
+      function drop(e) {
+        // case la plus proche du doigt
+        let best = -1, bd = 1e9;
+        rowEl.querySelectorAll(".order-slot").forEach((s, i) => {
+          const r = s.getBoundingClientRect();
+          const d = Math.hypot(r.left + r.width / 2 - e.clientX, r.top + r.height / 2 - e.clientY);
+          if (d < bd) { bd = d; best = i; }
+        });
+        if (best >= 0 && bd < 120) slots[best] = dragGlyph;
+        if (clone) { clone.remove(); clone = null; }
+        dragGlyph = null; render();
+      }
+      function render() {
+        rowEl.innerHTML = "";
+        for (let i = 0; i < N; i++) {
+          const slot = h("div", { class: "order-slot" });
+          slot.style.width = SLOT + "px"; slot.style.height = SLOT + "px";
+          if (slots[i]) {
+            slot.appendChild(chip(slots[i], SLOT - 8));
+            slot.addEventListener("pointerdown", (e) => {   // reprendre pour vider/déplacer
+              if (body._validated) return;
+              const g = slots[i]; slots[i] = null; render();
+              dragPointerId = e.pointerId; try { document.body.setPointerCapture(e.pointerId); } catch (_) {}
+              beginDrag(g, e);
+            });
+          }
+          rowEl.appendChild(slot);
+        }
+        trayEl.innerHTML = "";
+        step.palette.forEach((g) => {
+          const el = chip(g, 44); el.classList.add("order-pick");
+          el.addEventListener("pointerdown", (e) => beginDrag(g, e));
+          trayEl.appendChild(el);
+        });
+      }
+      render();
+
+      const validate = () => {
+        if (body._validated) return;
+        if (slots.some((s) => !s)) { CV.UI.toast("Remplis toutes les cases 🙂"); return; }
+        body._validated = true;
+        const good = slots.every((g, i) => g === step.solution[i]);
+        rowEl.classList.add(good ? "tt-ok" : "tt-ko");
+        showFeedback(good, step.explain || (good ? "" : "Relis bien les indices."));
       };
       body.appendChild(h("button", { class: "btn block mt", onclick: validate }, "Valider"));
     }
