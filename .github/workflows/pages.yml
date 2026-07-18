@@ -29,6 +29,8 @@ jobs:
 
       - name: Configurer Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true      # active Pages automatiquement si ce n'est pas déjà fait
 
       - name: Téléverser le site (dossier public/)
         uses: actions/upload-pages-artifact@v3
